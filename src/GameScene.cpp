@@ -411,6 +411,8 @@ void GameScene::drawImpactFlash(QPainter *painter) const
 
 void GameScene::update(float dt)
 {
+    m_input.updateGamepad();
+
     if (m_revealTimer > 0.f)
         m_revealTimer = qMax(0.f, m_revealTimer - dt);
     if (m_impactFlash > 0.f)
@@ -561,7 +563,9 @@ void GameScene::updateGameOver(float dt)
     m_vpX = CX + std::sin(m_time * 0.18f) * 90.f;
     m_vpY = CY + std::sin(m_time * 0.13f + 1.0f) * 65.f;
     advanceSparks(dt, 0.3f);
-    if (m_gameOverTimer <= 0.f && m_input.isConfirmJustPressed())
+    if (m_input.isJustPressed(Action::Cancel))
+        startAttract();
+    else if (m_gameOverTimer <= 0.f && m_input.isConfirmJustPressed())
         startCountdown();
     else if (m_gameOverIdleTimer <= 0.f)
         startAttract();
@@ -573,6 +577,11 @@ void GameScene::updateHighScoreEntry(float dt)
     m_vpX = CX + std::sin(m_time * 0.18f) * 70.f;
     m_vpY = CY + std::sin(m_time * 0.13f + 1.0f) * 50.f;
     advanceSparks(dt, 0.45f);
+
+    if (m_input.isJustPressed(Action::Cancel)) {
+        startAttract();
+        return;
+    }
 
     if (m_input.isLeftJustPressed())
         m_initialIndex = qMax(0, m_initialIndex - 1);

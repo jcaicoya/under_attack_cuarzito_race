@@ -2,6 +2,21 @@
 #include <QObject>
 #include <QSet>
 
+enum class Action {
+    MoveLeft,
+    MoveRight,
+    MoveUp,
+    MoveDown,
+    Confirm,
+    Cancel,
+    Fullscreen,
+};
+
+inline size_t qHash(Action action, size_t seed = 0) noexcept
+{
+    return ::qHash(static_cast<int>(action), seed);
+}
+
 class InputManager : public QObject {
     Q_OBJECT
 public:
@@ -9,6 +24,10 @@ public:
 
     void keyPressed(Qt::Key key);
     void keyReleased(Qt::Key key);
+    void updateGamepad();
+
+    bool isHeld(Action action) const;
+    bool isJustPressed(Action action) const;
 
     bool isMovingLeft()  const;
     bool isMovingRight() const;
@@ -23,10 +42,12 @@ public:
     void endFrame();
 
 private:
+    static Action actionForKey(Qt::Key key);
+    static bool hasActionForKey(Qt::Key key);
+    void rebuildHeldActions();
+
     QSet<Qt::Key> m_held;
-    bool m_confirmPressed = false;
-    bool m_leftPressed = false;
-    bool m_rightPressed = false;
-    bool m_upPressed = false;
-    bool m_downPressed = false;
+    QSet<Action> m_heldActions;
+    QSet<Action> m_gamepadHeldActions;
+    QSet<Action> m_pressedActions;
 };

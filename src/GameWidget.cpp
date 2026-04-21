@@ -59,20 +59,22 @@ void GameWidget::paintGL()
 
 void GameWidget::keyPressEvent(QKeyEvent *event)
 {
-    if (event->key() == Qt::Key_F11) {
+    if (event->isAutoRepeat())
+        return;
+
+    m_scene->inputManager()->keyPressed(static_cast<Qt::Key>(event->key()));
+
+    if (m_scene->inputManager()->isJustPressed(Action::Fullscreen)) {
         if (window()->isFullScreen())
             window()->showNormal();
         else
             window()->showFullScreen();
         return;
     }
-    if (event->key() == Qt::Key_Escape) {
+    if (m_scene->inputManager()->isJustPressed(Action::Cancel)) {
         window()->close();
         return;
     }
-    if (event->isAutoRepeat())
-        return;
-    m_scene->inputManager()->keyPressed(static_cast<Qt::Key>(event->key()));
 }
 
 void GameWidget::keyReleaseEvent(QKeyEvent *event)

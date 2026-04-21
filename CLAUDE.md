@@ -16,7 +16,7 @@ Primary requirements:
 - Launch fullscreen by default for event use.
 - Short, replayable runs of about 20 to 60 seconds.
 - Keyboard fallback always available.
-- Gamepad support planned.
+- Basic XInput gamepad support available on Windows.
 
 ## Current Code Reality
 
@@ -37,7 +37,7 @@ Implemented now:
 - `QTimer` game loop in `GameWidget`.
 - `QPainter` drawing on the OpenGL widget.
 - Attract, Countdown, Playing, GameOver, and HighScoreEntry states.
-- Keyboard input through `InputManager`.
+- Keyboard and basic XInput gamepad input through `InputManager`.
 - Pseudo-3D projection using a moving vanishing point.
 - Four-direction movement inside tunnel bounds.
 - Obstacle and collectible spawning.
@@ -54,7 +54,7 @@ Important files:
 | `src/GameWidget.*` | `QOpenGLWidget`, forwards keyboard events, owns timer, cave renderer, and aspect fit. |
 | `src/CaveRenderer.*` | Draws dark faceted cave, space, stars, Polaris, aurora, and floor glow. |
 | `src/GameScene.*` | Game state, entities, projection, updates, drawing. |
-| `src/InputManager.*` | Tracks held keys and just-pressed confirm. |
+| `src/InputManager.*` | Maps keyboard and XInput gamepad input to abstract actions. |
 | `CMakeLists.txt` | Qt Widgets plus OpenGL/OpenGLWidgets build. |
 
 The OpenGL widget shell and first `CaveRenderer` are now in place. The next target is visual tuning and, later, optional GLSL internals.
@@ -240,9 +240,9 @@ enum class GameState {
 
 ### Phase F - Input
 
-- Replace direct movement queries with action queries.
-- Keep keyboard mapping.
-- Add gamepad support.
+- [x] Replace direct movement queries with action queries.
+- [x] Keep keyboard mapping.
+- [x] Add basic Windows XInput gamepad support.
 - Tune dead zone and sensitivity.
 
 ### Phase G - Polish

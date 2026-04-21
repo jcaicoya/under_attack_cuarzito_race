@@ -1,6 +1,6 @@
 # Cuarzito Pre-Show Game
 
-A short arcade pre-show minigame for the **Cuarzito** cyber-theatre experience. It is built in **C++ / Qt** for Windows and intended to run on a large monitor or TV with keyboard fallback and, later, wireless gamepad support.
+A short arcade pre-show minigame for the **Cuarzito** cyber-theatre experience. It is built in **C++ / Qt** for Windows and intended to run on a large monitor or TV with keyboard fallback and basic XInput gamepad support.
 
 The game launches fullscreen by default for event use. Press `F11` to toggle fullscreen/windowed mode during development.
 
@@ -57,7 +57,7 @@ During normal gameplay, Cuarzito is mostly seen from behind, flying away from th
 
 ## Gameplay
 
-- **Move:** arrows/WASD now; gamepad planned.
+- **Move:** arrows/WASD, left stick, or D-pad.
 - **Dodge:** gem-like rocks and cave hazards rushing toward the camera.
 - **Collect:** quartz crystals for score.
 - **Survive:** speed, spawn pressure, and cave movement increase over time.
@@ -185,9 +185,9 @@ src/
 
 ### 6. Add Gamepad Support
 
-- Introduce abstract actions: move, confirm, cancel.
-- Map keyboard to actions first.
-- Add gamepad support second.
+- [x] Introduce abstract actions: move, confirm, cancel, fullscreen.
+- [x] Map keyboard to actions first.
+- [x] Add basic Windows XInput gamepad support.
 - Tune dead zone and sensitivity.
 
 ### 7. Polish for Live Use
@@ -205,6 +205,7 @@ src/
 |---|---|---|
 | Move | Arrows / WASD | Left stick / D-pad |
 | Start / Confirm | Space / Enter | A / Start |
+| Cancel | Escape | B / Back |
 | Fullscreen toggle | F11 | Optional |
 | Quit development build | Escape | Optional |
 
