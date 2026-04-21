@@ -7,6 +7,7 @@
 #include "AudioManager.h"
 #include "HighScoreManager.h"
 #include "InputManager.h"
+#include "TunnelPath.h"
 
 class QPainter;
 
@@ -41,6 +42,12 @@ private:
     static constexpr float PLAYER_SPEED  = 320.f;
     static constexpr float TUNNEL_HALF_W = 220.f;   // gameplay wall boundary
     static constexpr float TUNNEL_HALF_H = 152.f;
+    static constexpr float CHASE_MIN_SPEED = 135.f;
+    static constexpr float CHASE_BASE_SPEED = 260.f;
+    static constexpr float CHASE_MAX_SPEED = 760.f;
+    static constexpr float CHASE_ACCEL = 410.f;
+    static constexpr float CHASE_BRAKE = 520.f;
+    static constexpr float CHASE_DRAG = 64.f;
 
     // ---------------------------------------------------------------
     // Entity structs
@@ -48,6 +55,9 @@ private:
     struct Player {
         float offX = 0.f;   // screen-space offset from VP (tunnel center)
         float offY = 0.f;
+        float z = 0.f;
+        float speed = CHASE_BASE_SPEED;
+        bool wallContact = false;
     };
 
     struct Obstacle {
@@ -111,6 +121,7 @@ private:
     void updateAttract(float dt);
     void updateCountdown(float dt);
     void updatePlaying(float dt);
+    void updateChasePhysics(float dt);
     void updateGameOver(float dt);
     void updateHighScoreEntry(float dt);
     void updateHUD();
@@ -140,6 +151,7 @@ private:
     InputManager m_input;
     AudioManager m_audio;
     HighScoreManager m_highScores;
+    TunnelPath   m_tunnelPath;
     Player       m_player;
 
     QList<Obstacle>    m_obstacles;

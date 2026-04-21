@@ -7,6 +7,8 @@ enum class Action {
     MoveRight,
     MoveUp,
     MoveDown,
+    Accelerate,
+    Brake,
     Confirm,
     Cancel,
     Fullscreen,
@@ -33,6 +35,8 @@ public:
     bool isMovingRight() const;
     bool isMovingUp()    const;
     bool isMovingDown()  const;
+    bool isAccelerating() const;
+    bool isBraking() const;
     bool isLeftJustPressed() const;
     bool isRightJustPressed() const;
     bool isUpJustPressed() const;
@@ -42,7 +46,7 @@ public:
     void endFrame();
 
 private:
-    static Action actionForKey(Qt::Key key);
+    static QSet<Action> actionsForKey(Qt::Key key);
     static bool hasActionForKey(Qt::Key key);
     void rebuildHeldActions();
 

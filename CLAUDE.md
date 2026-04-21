@@ -112,7 +112,7 @@ Target controls:
 
 - Steer with arrows/WASD, left stick, or D-pad.
 - Accelerate with Space/Enter now, later A/R2 on gamepad.
-- Brake with Shift/Ctrl target, later B/L2 on gamepad.
+- Brake with Shift/Ctrl, later B/L2 on gamepad.
 
 Core model:
 
@@ -224,7 +224,8 @@ The moving vanishing point is a core part of the game feel. Keep the speed cap s
 - [x] Confirm the chase-game direction.
 - [x] Document the world model around `z`, speed, tunnel path, and four gems.
 - [x] Add `TunnelPath.h/.cpp`.
-- [ ] Refactor player physics to `z`, speed, acceleration, brake, and local tunnel offset.
+- [x] Add first player physics pass with `z`, speed, acceleration, brake, and local tunnel offset.
+- [ ] Remove old survival movement assumptions from remaining obstacle/collectible code.
 - [ ] Replace random collectibles with four persistent gem targets.
 - [ ] Add gem capture time extensions.
 - [ ] Add wall/floor/ceiling speed penalties.

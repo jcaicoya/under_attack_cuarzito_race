@@ -58,6 +58,8 @@ public:
 
         constexpr int AXIS_LEFT_X = 0;
         constexpr int AXIS_LEFT_Y = 1;
+        constexpr int AXIS_TRIGGER_LEFT = 4;
+        constexpr int AXIS_TRIGGER_RIGHT = 5;
         constexpr int BUTTON_A = 0;
         constexpr int BUTTON_B = 1;
         constexpr int BUTTON_BACK = 4;
@@ -70,6 +72,8 @@ public:
 
         const qint16 lx = m_gameControllerGetAxis(m_controller, AXIS_LEFT_X);
         const qint16 ly = m_gameControllerGetAxis(m_controller, AXIS_LEFT_Y);
+        const qint16 lt = m_gameControllerGetAxis(m_controller, AXIS_TRIGGER_LEFT);
+        const qint16 rt = m_gameControllerGetAxis(m_controller, AXIS_TRIGGER_RIGHT);
 
         if (m_gameControllerGetButton(m_controller, BUTTON_DPAD_LEFT) || lx < -DEAD_ZONE)
             actions.insert(Action::MoveLeft);
@@ -83,10 +87,14 @@ public:
             m_gameControllerGetButton(m_controller, BUTTON_START)) {
             actions.insert(Action::Confirm);
         }
+        if (m_gameControllerGetButton(m_controller, BUTTON_A) || rt > DEAD_ZONE)
+            actions.insert(Action::Accelerate);
         if (m_gameControllerGetButton(m_controller, BUTTON_B) ||
             m_gameControllerGetButton(m_controller, BUTTON_BACK)) {
             actions.insert(Action::Cancel);
         }
+        if (m_gameControllerGetButton(m_controller, BUTTON_B) || lt > DEAD_ZONE)
+            actions.insert(Action::Brake);
 
         return actions;
     }
@@ -145,9 +153,11 @@ void InputManager::keyPressed(Qt::Key key)
 {
     m_held.insert(key);
     if (hasActionForKey(key)) {
-        const Action action = actionForKey(key);
-        m_heldActions.insert(action);
-        m_pressedActions.insert(action);
+        const QSet<Action> actions = actionsForKey(key);
+        for (Action action : actions) {
+            m_heldActions.insert(action);
+            m_pressedActions.insert(action);
+        }
     }
 }
 
@@ -189,6 +199,16 @@ bool InputManager::isMovingDown() const
     return isHeld(Action::MoveDown);
 }
 
+bool InputManager::isAccelerating() const
+{
+    return isHeld(Action::Accelerate);
+}
+
+bool InputManager::isBraking() const
+{
+    return isHeld(Action::Brake);
+}
+
 bool InputManager::isConfirmJustPressed() const
 {
     return isJustPressed(Action::Confirm);
@@ -223,8 +243,12 @@ void InputManager::rebuildHeldActions()
 {
     m_heldActions.clear();
     for (Qt::Key key : m_held) {
-        if (hasActionForKey(key))
-            m_heldActions.insert(actionForKey(key));
+        if (!hasActionForKey(key))
+            continue;
+
+        const QSet<Action> actions = actionsForKey(key);
+        for (Action action : actions)
+            m_heldActions.insert(action);
     }
 }
 
@@ -280,8 +304,12 @@ void InputManager::updateGamepad()
                 newHeld.insert(Action::MoveDown);
             if ((buttons & XINPUT_GAMEPAD_A) || (buttons & XINPUT_GAMEPAD_START))
                 newHeld.insert(Action::Confirm);
+            if ((buttons & XINPUT_GAMEPAD_A) || state.Gamepad.bRightTrigger > 30)
+                newHeld.insert(Action::Accelerate);
             if ((buttons & XINPUT_GAMEPAD_B) || (buttons & XINPUT_GAMEPAD_BACK))
                 newHeld.insert(Action::Cancel);
+            if ((buttons & XINPUT_GAMEPAD_B) || state.Gamepad.bLeftTrigger > 30)
+                newHeld.insert(Action::Brake);
 
             break;
         }
@@ -309,6 +337,8 @@ bool InputManager::hasActionForKey(Qt::Key key)
     case Qt::Key_Space:
     case Qt::Key_Return:
     case Qt::Key_Enter:
+    case Qt::Key_Shift:
+    case Qt::Key_Control:
     case Qt::Key_Escape:
     case Qt::Key_F11:
         return true;
@@ -317,30 +347,33 @@ bool InputManager::hasActionForKey(Qt::Key key)
     }
 }
 
-Action InputManager::actionForKey(Qt::Key key)
+QSet<Action> InputManager::actionsForKey(Qt::Key key)
 {
     switch (key) {
     case Qt::Key_Left:
     case Qt::Key_A:
-        return Action::MoveLeft;
+        return {Action::MoveLeft};
     case Qt::Key_Right:
     case Qt::Key_D:
-        return Action::MoveRight;
+        return {Action::MoveRight};
     case Qt::Key_Up:
     case Qt::Key_W:
-        return Action::MoveUp;
+        return {Action::MoveUp};
     case Qt::Key_Down:
     case Qt::Key_S:
-        return Action::MoveDown;
+        return {Action::MoveDown};
     case Qt::Key_Space:
     case Qt::Key_Return:
     case Qt::Key_Enter:
-        return Action::Confirm;
+        return {Action::Confirm, Action::Accelerate};
+    case Qt::Key_Shift:
+    case Qt::Key_Control:
+        return {Action::Brake};
     case Qt::Key_Escape:
-        return Action::Cancel;
+        return {Action::Cancel};
     case Qt::Key_F11:
-        return Action::Fullscreen;
+        return {Action::Fullscreen};
     default:
-        return Action::Cancel;
+        return {};
     }
 }

@@ -473,21 +473,7 @@ void GameScene::updateCountdown(float dt)
 
 void GameScene::updatePlaying(float dt)
 {
-    // --- Tunnel curve: move the vanishing point ---
-    updateVP(dt);
-
-    // --- Player movement (relative to VP) ---
-    m_player.offX -= m_input.isMovingLeft()  ? PLAYER_SPEED * dt : 0.f;
-    m_player.offX += m_input.isMovingRight() ? PLAYER_SPEED * dt : 0.f;
-    m_player.offY -= m_input.isMovingUp()    ? PLAYER_SPEED * dt : 0.f;
-    m_player.offY += m_input.isMovingDown()  ? PLAYER_SPEED * dt : 0.f;
-
-    // --- Wall collision ---
-    if (std::abs(m_player.offX) > TUNNEL_HALF_W ||
-        std::abs(m_player.offY) > TUNNEL_HALF_H) {
-        endGame();
-        return;
-    }
+    updateChasePhysics(dt);
 
     advanceSparks(dt);
 
@@ -545,8 +531,8 @@ void GameScene::updatePlaying(float dt)
 
     // --- Score and difficulty ramp ---
     m_survivalTime   += dt;
-    m_score          += dt;
-    m_worldSpeed      = qMin(640.f, 220.f + m_survivalTime * 16.f);
+    m_score          += dt * qMax(1.f, m_player.speed / 180.f);
+    m_worldSpeed      = m_player.speed;
     m_spawnInterval   = qMax(0.45f, 2.0f  - m_survivalTime * 0.055f);
     m_collectInterval = qMax(0.55f, 1.0f  - m_survivalTime * 0.008f);
 
@@ -555,6 +541,50 @@ void GameScene::updatePlaying(float dt)
     m_popups.removeIf([](const ScorePopup &p) { return p.life <= 0.f; });
 
     updateHUD();
+}
+
+void GameScene::updateChasePhysics(float dt)
+{
+    m_time += dt;
+
+    const float steerSpeed = PLAYER_SPEED * (0.72f + m_player.speed / CHASE_MAX_SPEED * 0.42f);
+    m_player.offX -= m_input.isMovingLeft()  ? steerSpeed * dt : 0.f;
+    m_player.offX += m_input.isMovingRight() ? steerSpeed * dt : 0.f;
+    m_player.offY -= m_input.isMovingUp()    ? steerSpeed * dt : 0.f;
+    m_player.offY += m_input.isMovingDown()  ? steerSpeed * dt : 0.f;
+
+    if (m_input.isAccelerating())
+        m_player.speed += CHASE_ACCEL * dt;
+    if (m_input.isBraking())
+        m_player.speed -= CHASE_BRAKE * dt;
+    if (!m_input.isAccelerating())
+        m_player.speed -= CHASE_DRAG * dt;
+
+    const TunnelPath::Sample current = m_tunnelPath.sample(m_player.z);
+    const float safeX = current.innerRadius * 1.28f;
+    const float safeY = current.innerRadius * 0.88f;
+    const float nx = safeX > 0.f ? m_player.offX / safeX : 0.f;
+    const float ny = safeY > 0.f ? m_player.offY / safeY : 0.f;
+    const float wallDistance = std::sqrt(nx * nx + ny * ny);
+    m_player.wallContact = wallDistance > 1.f;
+
+    if (m_player.wallContact) {
+        const float clampScale = 1.f / wallDistance;
+        m_player.offX *= clampScale;
+        m_player.offY *= clampScale;
+        m_player.speed -= 260.f * dt;
+        m_impactFlash = qMax(m_impactFlash, 0.18f);
+    }
+
+    m_player.speed = qBound(CHASE_MIN_SPEED, m_player.speed, CHASE_MAX_SPEED);
+    m_player.z += m_player.speed * dt;
+    m_worldSpeed = m_player.speed;
+
+    const TunnelPath::Sample lookAhead = m_tunnelPath.sample(m_player.z + 230.f);
+    const float targetVpX = CX + lookAhead.center.x() * 0.88f;
+    const float targetVpY = CY + lookAhead.center.y() * 0.74f;
+    m_vpX += (targetVpX - m_vpX) * qMin(1.f, dt * 4.4f);
+    m_vpY += (targetVpY - m_vpY) * qMin(1.f, dt * 4.4f);
 }
 
 void GameScene::updateGameOver(float dt)
@@ -826,9 +856,12 @@ QString GameScene::initialsEntryText() const
 void GameScene::updateHUD()
 {
     m_hudText =
-        QString("SCORE  %1    TIME  %2s")
+        QString("SCORE  %1    TIME  %2s    Z  %3    SPEED  %4%5")
             .arg(static_cast<int>(m_score), 5)
-            .arg(static_cast<int>(m_survivalTime));
+            .arg(static_cast<int>(m_survivalTime))
+            .arg(static_cast<int>(m_player.z), 5)
+            .arg(static_cast<int>(m_player.speed), 3)
+            .arg(m_player.wallContact ? "  WALL" : "");
 }
 
 void GameScene::drawHUD(QPainter *painter) const

@@ -165,7 +165,8 @@ src/
 - [x] Replace the old long-term goal with a chase concept.
 - [x] Define the world model around `z`, speed, tunnel path, and four target gems.
 - [x] Add `TunnelPath` as the source of tunnel center/radius samples by `z`.
-- [ ] Refactor player state from screen-survival movement to chase movement: `z`, speed, acceleration, braking, and local tunnel offset.
+- [x] Add first chase movement pass: `z`, speed, acceleration, braking, and local tunnel offset.
+- [ ] Remove old survival movement assumptions from remaining obstacle/collectible code.
 - [ ] Replace random collectible spawning with four persistent flying gems.
 - [ ] Add timer extensions per captured gem.
 - [ ] Add wall/floor/ceiling speed penalties.
@@ -242,7 +243,7 @@ src/
 |---|---|---|
 | Move | Arrows / WASD | Left stick / D-pad |
 | Accelerate / Start / Confirm | Space / Enter | A / R2 / Start |
-| Brake | Shift / Ctrl target | B / L2 target |
+| Brake | Shift / Ctrl | B / L2 target |
 | Cancel | Escape | B / Back |
 | Fullscreen toggle | F11 | Optional |
 | Quit development build | Escape | Optional |
