@@ -96,6 +96,7 @@ private:
     // Game flow
     // ---------------------------------------------------------------
     void startGame();
+    void startAttract();
     void startCountdown();
     void startHighScoreEntry(int score);
     void endGame();
@@ -127,6 +128,7 @@ private:
     void drawBursts(QPainter *p) const;
     void drawPopups(QPainter *p) const;
     void drawHUD(QPainter *p) const;
+    void drawHighScoreEntry(QPainter *p) const;
     void drawImpactFlash(QPainter *p) const;
 
     // ---------------------------------------------------------------
@@ -156,6 +158,7 @@ private:
     float m_survivalTime    = 0.f;
     float m_score           = 0.f;
     float m_gameOverTimer   = 0.f;
+    float m_gameOverIdleTimer = 0.f;
     float m_countdownTimer  = 0.f;
     float m_revealTimer     = 0.f;
     float m_revealDuration  = 0.f;

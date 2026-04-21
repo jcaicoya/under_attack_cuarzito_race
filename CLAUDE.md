@@ -13,6 +13,7 @@ Primary requirements:
 - Simple enough to understand instantly.
 - Beautiful enough for a large screen or TV.
 - Robust enough for live event use.
+- Launch fullscreen by default for event use.
 - Short, replayable runs of about 20 to 60 seconds.
 - Keyboard fallback always available.
 - Gamepad support planned.
@@ -35,7 +36,7 @@ Implemented now:
 - `QOpenGLWidget` main game widget.
 - `QTimer` game loop in `GameWidget`.
 - `QPainter` drawing on the OpenGL widget.
-- Attract, Countdown, Playing, and GameOver states.
+- Attract, Countdown, Playing, GameOver, and HighScoreEntry states.
 - Keyboard input through `InputManager`.
 - Pseudo-3D projection using a moving vanishing point.
 - Four-direction movement inside tunnel bounds.
@@ -235,7 +236,7 @@ enum class GameState {
 - [x] Show top scores in attract and game-over overlays.
 - [x] Add 3-letter initials entry.
 - Restart from game over goes through countdown.
-- Return automatically to attract mode after score entry or timeout.
+- [x] Return automatically to attract mode after score entry or game-over timeout.
 
 ### Phase F - Input
 
@@ -250,7 +251,7 @@ enum class GameState {
 - [x] Add crystal pickup particle burst.
 - Add start/collect/game-over sounds.
 - Add ambient loop.
-- Add fullscreen/event mode.
+- [x] Add fullscreen/event mode toggle with F11.
 - Package runtime dependencies cleanly.
 
 ## Immediate Next Step

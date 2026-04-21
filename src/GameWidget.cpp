@@ -59,6 +59,13 @@ void GameWidget::paintGL()
 
 void GameWidget::keyPressEvent(QKeyEvent *event)
 {
+    if (event->key() == Qt::Key_F11) {
+        if (window()->isFullScreen())
+            window()->showNormal();
+        else
+            window()->showFullScreen();
+        return;
+    }
     if (event->key() == Qt::Key_Escape) {
         window()->close();
         return;

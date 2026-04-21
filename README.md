@@ -2,6 +2,8 @@
 
 A short arcade pre-show minigame for the **Cuarzito** cyber-theatre experience. It is built in **C++ / Qt** for Windows and intended to run on a large monitor or TV with keyboard fallback and, later, wireless gamepad support.
 
+The game launches fullscreen by default for event use. Press `F11` to toggle fullscreen/windowed mode during development.
+
 The player controls **Cuarzito**, a small dark hooded figure with a neon green visor, while flying through a cosmic crystal cave. The goal is simple: dodge obstacles, collect quartz crystals, and survive as long as possible as speed and tunnel movement increase.
 
 ## Current State
@@ -178,8 +180,8 @@ src/
 - [x] Add top-10 local high scores in JSON.
 - [x] Show top scores in attract and game-over screens.
 - [x] Add 3-letter initials entry.
-- Current flow: `Attract -> Countdown -> Playing -> GameOver -> HighScoreEntry -> Countdown`.
-- Target full flow: `Attract -> Countdown -> Playing -> GameOver -> HighScoreEntry -> Attract`.
+- Current flow: `Attract -> Countdown -> Playing -> GameOver -> HighScoreEntry -> Attract`.
+- Game over restarts with confirm or returns to attract after an idle timeout.
 
 ### 6. Add Gamepad Support
 
@@ -194,7 +196,7 @@ src/
 - [x] Crystal collection burst.
 - Start, collect, game-over, and high-score sounds.
 - Subtle ambient loop.
-- Fullscreen/event mode.
+- [x] Fullscreen/event mode toggle with F11.
 - Reliable startup with no missing runtime assets.
 
 ## Controls
@@ -203,6 +205,7 @@ src/
 |---|---|---|
 | Move | Arrows / WASD | Left stick / D-pad |
 | Start / Confirm | Space / Enter | A / Start |
+| Fullscreen toggle | F11 | Optional |
 | Quit development build | Escape | Optional |
 
 ## Build Notes

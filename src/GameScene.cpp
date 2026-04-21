@@ -18,7 +18,7 @@ GameScene::GameScene(QObject *parent) : QObject(parent)
 {
     initSparks();
 
-    setOverlay(attractOverlayText());
+    startAttract();
 }
 
 // ---------------------------------------------------------------------------
@@ -556,12 +556,15 @@ void GameScene::updatePlaying(float dt)
 void GameScene::updateGameOver(float dt)
 {
     m_gameOverTimer -= dt;
+    m_gameOverIdleTimer -= dt;
     m_time += dt;
     m_vpX = CX + std::sin(m_time * 0.18f) * 90.f;
     m_vpY = CY + std::sin(m_time * 0.13f + 1.0f) * 65.f;
     advanceSparks(dt, 0.3f);
     if (m_gameOverTimer <= 0.f && m_input.isConfirmJustPressed())
         startCountdown();
+    else if (m_gameOverIdleTimer <= 0.f)
+        startAttract();
 }
 
 void GameScene::updateHighScoreEntry(float dt)
@@ -591,7 +594,7 @@ void GameScene::updateHighScoreEntry(float dt)
             m_highScores.addScore(m_initials, m_pendingScore);
             m_scoreSubmitted = true;
             m_pendingScore = 0;
-            startCountdown();
+            startAttract();
             return;
         }
     }
@@ -622,6 +625,8 @@ void GameScene::startGame()
     m_collectInterval = 1.0f;
     m_survivalTime    = 0.f;
     m_score           = 0.f;
+    m_gameOverTimer   = 0.f;
+    m_gameOverIdleTimer = 0.f;
     m_countdownTimer  = 0.f;
     m_revealTimer     = 0.f;
     m_revealDuration  = 0.f;
@@ -633,6 +638,41 @@ void GameScene::startGame()
 
     m_hudText.clear();
     m_overlayText.clear();
+}
+
+void GameScene::startAttract()
+{
+    m_obstacles.clear();
+    m_collectibles.clear();
+    m_popups.clear();
+    m_bursts.clear();
+    m_player = Player{};
+
+    m_vpX = CX;
+    m_vpY = CY;
+    m_time = 0.f;
+
+    m_worldSpeed      = 220.f;
+    m_spawnTimer      = 1.5f;
+    m_spawnInterval   = 2.0f;
+    m_collectTimer    = 1.0f;
+    m_collectInterval = 1.0f;
+    m_survivalTime    = 0.f;
+    m_score           = 0.f;
+    m_gameOverTimer   = 0.f;
+    m_gameOverIdleTimer = 0.f;
+    m_countdownTimer  = 0.f;
+    m_revealTimer     = 0.f;
+    m_revealDuration  = 0.f;
+    m_impactFlash     = 0.f;
+    m_scoreSubmitted  = false;
+    m_pendingScore    = 0;
+    m_initialIndex    = 0;
+    m_initials        = "AAA";
+    m_state           = GameState::Attract;
+
+    m_hudText.clear();
+    setOverlay(attractOverlayText());
 }
 
 void GameScene::startCountdown()
@@ -654,6 +694,8 @@ void GameScene::startCountdown()
     m_collectInterval = 1.0f;
     m_survivalTime    = 0.f;
     m_score           = 0.f;
+    m_gameOverTimer   = 0.f;
+    m_gameOverIdleTimer = 0.f;
     m_countdownTimer  = 3.0f;
     m_revealTimer     = 0.f;
     m_revealDuration  = 0.f;
@@ -671,6 +713,7 @@ void GameScene::endGame()
 {
     m_state         = GameState::GameOver;
     m_gameOverTimer = 1.5f;
+    m_gameOverIdleTimer = 8.0f;
     m_revealDuration = 1.5f;
     m_revealTimer    = m_revealDuration;
     m_impactFlash    = 1.f;
@@ -762,17 +805,9 @@ QString GameScene::attractOverlayText() const
 
 QString GameScene::initialsEntryText() const
 {
-    QString initialsLine;
-    QString cursorLine;
-    for (int i = 0; i < 3; ++i) {
-        initialsLine += QString(" %1 ").arg(m_initials[i]);
-        cursorLine += (i == m_initialIndex) ? " ^ " : "   ";
-    }
-
-    return QString("NEW HIGH SCORE\n\nScore: %1\n\n%2\n%3\n\nUP/DOWN LETTER   LEFT/RIGHT SLOT\nSPACE CONFIRM")
+    return QString("NEW HIGH SCORE\n\nScore: %1\n\n\n\n\nUP/DOWN LETTER   LEFT/RIGHT SLOT\nSPACE CONFIRM")
         .arg(m_pendingScore)
-        .arg(initialsLine)
-        .arg(cursorLine);
+        ;
 }
 
 void GameScene::updateHUD()
@@ -808,6 +843,44 @@ void GameScene::drawHUD(QPainter *painter) const
                             bounds.width(),
                             bounds.height());
         painter->drawText(target, Qt::AlignCenter, m_overlayText);
+    }
+
+    if (m_state == GameState::HighScoreEntry)
+        drawHighScoreEntry(painter);
+
+    painter->restore();
+}
+
+void GameScene::drawHighScoreEntry(QPainter *painter) const
+{
+    painter->save();
+
+    const float centerX = SCENE_W * 0.5f;
+    const float y = SCENE_H * 0.48f;
+    const float spacing = 76.f;
+    const float startX = centerX - spacing;
+
+    QFont letterFont("Courier New", 46, QFont::Bold);
+    painter->setFont(letterFont);
+    painter->setPen(QColor(240, 255, 248));
+
+    for (int i = 0; i < 3; ++i) {
+        const float x = startX + spacing * i;
+        QRectF letterRect(x - 30.f, y - 46.f, 60.f, 58.f);
+        painter->drawText(letterRect, Qt::AlignCenter, QString(m_initials[i]));
+
+        if (i == m_initialIndex) {
+            painter->setPen(Qt::NoPen);
+            QRadialGradient glow(x, y + 25.f, 32.f);
+            glow.setColorAt(0.0, QColor(100, 255, 150, 115));
+            glow.setColorAt(1.0, QColor(0, 0, 0, 0));
+            painter->setBrush(glow);
+            painter->drawEllipse(QPointF(x, y + 25.f), 34.f, 16.f);
+
+            painter->setPen(QPen(QColor(100, 255, 150, 240), 4.f));
+            painter->drawLine(QPointF(x - 22.f, y + 25.f), QPointF(x + 22.f, y + 25.f));
+            painter->setPen(QColor(240, 255, 248));
+        }
     }
 
     painter->restore();
