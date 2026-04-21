@@ -14,16 +14,28 @@ The repository currently contains a playable Qt prototype with an OpenGL-ready w
 - `GameScene : QObject` for game state, updates, projection, and draw helpers.
 - `QPainter` rendering on top of the OpenGL widget.
 - Fixed 1280x720 gameplay canvas.
-- Attract screen, countdown state, playing state, and game-over state.
+- Attract, intro, countdown, playing, game-over, and high-score entry states.
 - Keyboard input: arrows/WASD, Space/Enter, Escape.
 - Pseudo-3D projection using a moving vanishing point.
 - Four-direction player movement inside the tunnel.
-- Four persistent chase gems, score popups, sparks, and basic HUD.
+- Four persistent chase gems, score popups, burst effects, and basic HUD.
 - Chase-game infrastructure around a persistent tunnel path and world `z` positions.
 - Procedural placeholder Cuarzito drawn with `QPainter`.
 - Dedicated `CaveRenderer` with a QPainter-based faceted cave/space background.
 
 The prototype proves the core loop works. The current cave renderer is intentionally isolated so it can later be upgraded internally to GLSL without changing gameplay code.
+
+## Resume Note
+
+Stopped after a successful compile, but the current visual result does **not** yet match the intended tunnel feel. The highest-priority next task is not more gameplay logic: it is getting the **walls, floor, and ceiling of the cave/tunnel to visibly move past the player**.
+
+For the next session, focus on `CaveRenderer` first:
+
+- Build a tunnel renderer where multiple cave rings/segments move toward the camera based on `worldSpeed`.
+- Make walls, ceiling, and floor read as actual passing surfaces, not only a static faceted opening or dark cap.
+- Keep the gameplay view enclosed during play; space/the exit belongs mostly to the attract/intro screen.
+- Use `TunnelPath` as the source of curve/turn information, but it is acceptable to simplify the gameplay temporarily if that helps prove the tunnel motion.
+- Do not spend time on the 3D labyrinth idea, DualSense, high-score polish, or intro animation until the tunnel traversal feels right.
 
 ## Visual References
 
@@ -70,6 +82,14 @@ The target game is a short chase through a cave/tunnel:
 - **Lose:** timer reaches zero before all gems are collected.
 - **Session target:** successful runs should still feel short, around 60 to 90 seconds.
 
+Presentation target:
+
+- The attract/intro screen can show the cave mouth opening into space, with the four stones floating in the distance.
+- When the chase begins, the gems and Cuarzito enter the tunnel.
+- During gameplay, the player should feel enclosed inside the tunnel; the far space exit should usually not be visible.
+- The 3D effect should come primarily from moving cave walls, ceiling, and floor, not from orange particles.
+- Orange particles are removed for now and can return later only if they support readability.
+
 Initial chase model:
 
 ```text
@@ -84,6 +104,8 @@ Cuarzito's z speed depends on player acceleration, braking, and wall collisions.
 The tunnel path bends through x/y as z increases, like a worm-shaped cave.
 Sharp turns and steep rises/drops should sometimes hide the far tunnel opening, so the player feels the cave wrapping around them instead of seeing a straight exit at all times.
 ```
+
+Future idea to keep parked: a real 3D labyrinth chase, where gems choose paths through branching tunnels. This is feasible later, but it should wait until the core straight-path tunnel chase feels good.
 
 Design rules to preserve:
 
@@ -174,6 +196,12 @@ src/
 - [x] Add wall/floor/ceiling speed penalties.
 - [x] Add win state for collecting all gems.
 - [x] Retune scoring for time, clean flight, wall contacts, and gem captures.
+- [x] Limit Cuarzito's top speed for a more controlled tunnel traversal.
+- [x] Remove orange spark particles from gameplay.
+- [x] Add structural intro/pre-chase state before countdown.
+- [x] Draw first intro screen pass: cave exit visible, four stones floating before the chase.
+- [x] Make gameplay tunnel feel enclosed, with the far exit usually hidden.
+- [ ] Animate Cuarzito approaching and the stones entering the tunnel during intro.
 
 ### 1. Verify and Preserve the Prototype
 
@@ -198,7 +226,8 @@ src/
   - stars and one bright Polaris point,
   - subtle aurora/blue-teal glow,
   - dark faceted rock walls.
-- [x] Keep orange spark motion as a gameplay-layer draw pass.
+- [x] Remove orange spark motion so the tunnel walls carry the 3D effect.
+- [ ] Replace the current mostly static cave opening with moving tunnel walls, floor, and ceiling.
 - Prefer shader/OpenGL if it gives a clear visual win.
 - Keep gameplay readability above visual detail.
 

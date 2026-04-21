@@ -16,42 +16,9 @@
 
 GameScene::GameScene(QObject *parent) : QObject(parent)
 {
-    initSparks();
     m_audio.startAmbient();
 
     startAttract();
-}
-
-// ---------------------------------------------------------------------------
-// Initialisers
-// ---------------------------------------------------------------------------
-
-void GameScene::initSparks()
-{
-    auto *rng = QRandomGenerator::global();
-    m_sparks.clear();
-    for (int i = 0; i < 240; ++i) {
-        Spark s;
-        s.wx    = (rng->generateDouble() * 2.0 - 1.0) * 190.f;
-        s.wy    = (rng->generateDouble() * 2.0 - 1.0) * 145.f;
-        s.wz    = REMOVE_Z + rng->generateDouble() * (SPAWN_Z - REMOVE_Z);
-        s.speed = 180.f + rng->generateDouble() * 420.f;
-        m_sparks.append(s);
-    }
-}
-
-void GameScene::advanceSparks(float dt, float speedMult)
-{
-    auto *rng = QRandomGenerator::global();
-    for (auto &s : m_sparks) {
-        s.wz -= s.speed * speedMult * dt;
-        if (s.wz < REMOVE_Z) {
-            s.wz    = SPAWN_Z * 0.75f + rng->generateDouble() * SPAWN_Z * 0.25f;
-            s.wx    = (rng->generateDouble() * 2.0 - 1.0) * 190.f;
-            s.wy    = (rng->generateDouble() * 2.0 - 1.0) * 145.f;
-            s.speed = 180.f + rng->generateDouble() * 420.f;
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -62,7 +29,6 @@ void GameScene::render(QPainter *painter)
 {
     painter->setRenderHint(QPainter::Antialiasing);
 
-    drawSparks(painter);
     drawChaseGems(painter);
 
     if (m_state != GameState::Attract)
@@ -86,27 +52,18 @@ float GameScene::turnOcclusion() const
     return m_tunnelPath.sample(m_player.z + 180.f).occlusion;
 }
 
-void GameScene::drawSparks(QPainter *painter) const
+CaveRenderer::Mode GameScene::caveMode() const
 {
-    for (const auto &s : m_sparks) {
-        if (s.wz <= REMOVE_Z) continue;
-        float px1   = projX(s.wx, s.wz);
-        float py1   = projY(s.wy, s.wz);
-        float tailZ = s.wz + s.speed * 0.035f;
-        float px2   = projX(s.wx, tailZ);
-        float py2   = projY(s.wy, tailZ);
-
-        float t     = 1.f - s.wz / SPAWN_Z;
-        int   alpha = static_cast<int>(t * 210.f + 25.f);
-        float width = 0.8f + t * 1.2f;
-
-        painter->setPen(QPen(QColor(255, 145, 20, qMin(alpha, 255)), width));
-        painter->drawLine(QPointF(px1, py1), QPointF(px2, py2));
-    }
+    return m_state == GameState::Playing
+        ? CaveRenderer::Mode::EnclosedTunnel
+        : CaveRenderer::Mode::OpenMouth;
 }
 
 void GameScene::drawChaseGems(QPainter *painter) const
 {
+    if (m_state == GameState::Attract)
+        return;
+
     struct GemDrawRef {
         const ChaseGem *gem = nullptr;
         int index = 0;
@@ -125,13 +82,17 @@ void GameScene::drawChaseGems(QPainter *painter) const
     const TunnelPath::Sample playerSample = m_tunnelPath.sample(m_player.z);
     for (const GemDrawRef &ref : sorted) {
         const ChaseGem *gem = ref.gem;
-        const float ahead = gem->z - m_player.z;
+        float ahead = gem->z - m_player.z;
         if (ahead < -90.f || ahead > 980.f)
             continue;
 
         const TunnelPath::Sample gemSample = m_tunnelPath.sample(gem->z);
         const QPointF offset = m_tunnelPath.gemOffset(ref.index, gem->z);
-        const QPointF relativeCenter = gemSample.center - playerSample.center;
+        QPointF relativeCenter = gemSample.center - playerSample.center;
+        if (m_state == GameState::Intro || m_state == GameState::Countdown) {
+            ahead = 280.f + ref.index * 78.f;
+            relativeCenter *= 0.35f;
+        }
         const float renderZ = qBound(90.f, ahead + 245.f, 980.f);
         const float wx = relativeCenter.x() + offset.x() - m_player.offX * 0.22f;
         const float wy = relativeCenter.y() + offset.y() - m_player.offY * 0.22f;
@@ -374,6 +335,7 @@ void GameScene::update(float dt)
 
     switch (m_state) {
     case GameState::Attract:  updateAttract(dt);  break;
+    case GameState::Intro:    updateIntro(dt);    break;
     case GameState::Countdown:updateCountdown(dt);break;
     case GameState::Playing:  updatePlaying(dt);  break;
     case GameState::GameOver: updateGameOver(dt); break;
@@ -390,9 +352,22 @@ void GameScene::updateAttract(float dt)
     m_vpX = CX + std::sin(m_time * 0.18f) * 90.f;
     m_vpY = CY + std::sin(m_time * 0.13f + 1.0f) * 65.f;
 
-    advanceSparks(dt, 0.6f);
     setOverlay(attractOverlayText());
     if (m_input.isConfirmJustPressed())
+        startIntro();
+}
+
+void GameScene::updateIntro(float dt)
+{
+    m_introTimer -= dt;
+    m_time += dt;
+
+    const float t = qBound(0.f, 1.f - m_introTimer / 2.8f, 1.f);
+    m_vpX = CX + std::sin(m_time * 0.42f) * (55.f + t * 35.f);
+    m_vpY = CY + std::sin(m_time * 0.31f + 1.0f) * (34.f + t * 22.f);
+
+    setOverlay("THE GEMS ESCAPE\n\nGET READY");
+    if (m_input.isConfirmJustPressed() || m_introTimer <= 0.f)
         startCountdown();
 }
 
@@ -403,7 +378,6 @@ void GameScene::updateCountdown(float dt)
 
     m_vpX = CX + std::sin(m_time * 0.18f) * 70.f;
     m_vpY = CY + std::sin(m_time * 0.13f + 1.0f) * 50.f;
-    advanceSparks(dt, 0.75f);
 
     const int beat = static_cast<int>(std::ceil(m_countdownTimer));
     if (beat > 0) {
@@ -418,8 +392,6 @@ void GameScene::updateCountdown(float dt)
 void GameScene::updatePlaying(float dt)
 {
     updateChasePhysics(dt);
-
-    advanceSparks(dt);
 
     for (auto &gem : m_chaseGems) {
         if (!gem.collected)
@@ -538,11 +510,10 @@ void GameScene::updateGameOver(float dt)
     m_time += dt;
     m_vpX = CX + std::sin(m_time * 0.18f) * 90.f;
     m_vpY = CY + std::sin(m_time * 0.13f + 1.0f) * 65.f;
-    advanceSparks(dt, 0.3f);
     if (m_input.isJustPressed(Action::Cancel))
         startAttract();
     else if (m_gameOverTimer <= 0.f && m_input.isConfirmJustPressed())
-        startCountdown();
+        startIntro();
     else if (m_gameOverIdleTimer <= 0.f)
         startAttract();
 }
@@ -552,8 +523,6 @@ void GameScene::updateHighScoreEntry(float dt)
     m_time += dt;
     m_vpX = CX + std::sin(m_time * 0.18f) * 70.f;
     m_vpY = CY + std::sin(m_time * 0.13f + 1.0f) * 50.f;
-    advanceSparks(dt, 0.45f);
-
     if (m_input.isJustPressed(Action::Cancel)) {
         startAttract();
         return;
@@ -609,6 +578,7 @@ void GameScene::startGame()
     m_score           = 0.f;
     m_gameOverTimer   = 0.f;
     m_gameOverIdleTimer = 0.f;
+    m_introTimer      = 0.f;
     m_countdownTimer  = 0.f;
     m_chaseTimer      = 20.f;
     m_cleanFlightTime = 0.f;
@@ -643,6 +613,7 @@ void GameScene::startAttract()
     m_score           = 0.f;
     m_gameOverTimer   = 0.f;
     m_gameOverIdleTimer = 0.f;
+    m_introTimer      = 0.f;
     m_countdownTimer  = 0.f;
     m_chaseTimer      = 20.f;
     m_cleanFlightTime = 0.f;
@@ -662,6 +633,42 @@ void GameScene::startAttract()
     setOverlay(attractOverlayText());
 }
 
+void GameScene::startIntro()
+{
+    resetChaseGems();
+    m_popups.clear();
+    m_bursts.clear();
+    m_player = Player{};
+
+    m_vpX  = CX;
+    m_vpY  = CY;
+    m_time = 0.f;
+
+    m_worldSpeed      = CHASE_BASE_SPEED;
+    m_survivalTime    = 0.f;
+    m_score           = 0.f;
+    m_gameOverTimer   = 0.f;
+    m_gameOverIdleTimer = 0.f;
+    m_introTimer      = 2.8f;
+    m_countdownTimer  = 0.f;
+    m_chaseTimer      = 20.f;
+    m_cleanFlightTime = 0.f;
+    m_revealTimer     = 0.f;
+    m_revealDuration  = 0.f;
+    m_impactFlash     = 0.f;
+    m_scoreSubmitted  = false;
+    m_runWon          = false;
+    m_wasWallContact  = false;
+    m_wallHitCount    = 0;
+    m_pendingScore    = 0;
+    m_initialIndex    = 0;
+    m_state           = GameState::Intro;
+
+    m_hudText.clear();
+    setOverlay("THE GEMS ESCAPE\n\nGET READY");
+    m_audio.play(SoundCue::Start);
+}
+
 void GameScene::startCountdown()
 {
     resetChaseGems();
@@ -678,6 +685,7 @@ void GameScene::startCountdown()
     m_score           = 0.f;
     m_gameOverTimer   = 0.f;
     m_gameOverIdleTimer = 0.f;
+    m_introTimer      = 0.f;
     m_countdownTimer  = 3.0f;
     m_chaseTimer      = 20.f;
     m_cleanFlightTime = 0.f;
@@ -694,7 +702,6 @@ void GameScene::startCountdown()
 
     m_hudText.clear();
     setOverlay("3");
-    m_audio.play(SoundCue::Start);
 }
 
 void GameScene::endGame()

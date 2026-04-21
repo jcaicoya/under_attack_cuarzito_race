@@ -5,13 +5,14 @@
 #include <QPointF>
 #include <QString>
 #include "AudioManager.h"
+#include "CaveRenderer.h"
 #include "HighScoreManager.h"
 #include "InputManager.h"
 #include "TunnelPath.h"
 
 class QPainter;
 
-enum class GameState { Attract, Countdown, Playing, GameOver, HighScoreEntry };
+enum class GameState { Attract, Intro, Countdown, Playing, GameOver, HighScoreEntry };
 
 class GameScene : public QObject {
     Q_OBJECT
@@ -25,6 +26,7 @@ public:
     float survivalTime() const { return m_survivalTime; }
     float worldSpeed() const { return m_worldSpeed; }
     float turnOcclusion() const;
+    CaveRenderer::Mode caveMode() const;
 
 private:
     // ---------------------------------------------------------------
@@ -35,17 +37,13 @@ private:
     static constexpr float CX      = SCENE_W / 2.f;   // screen center X
     static constexpr float CY      = SCENE_H / 2.f;   // screen center Y
     static constexpr float FOCAL   = 400.f;
-    static constexpr float SPAWN_Z = 900.f;
-    static constexpr float REMOVE_Z  = 25.f;
-
-    // Player movement speed and tunnel bounds (screen-space px relative to VP)
     static constexpr float PLAYER_SPEED  = 320.f;
     static constexpr float CHASE_MIN_SPEED = 135.f;
-    static constexpr float CHASE_BASE_SPEED = 260.f;
-    static constexpr float CHASE_MAX_SPEED = 760.f;
-    static constexpr float CHASE_ACCEL = 410.f;
-    static constexpr float CHASE_BRAKE = 520.f;
-    static constexpr float CHASE_DRAG = 64.f;
+    static constexpr float CHASE_BASE_SPEED = 235.f;
+    static constexpr float CHASE_MAX_SPEED = 520.f;
+    static constexpr float CHASE_ACCEL = 260.f;
+    static constexpr float CHASE_BRAKE = 430.f;
+    static constexpr float CHASE_DRAG = 72.f;
 
     // ---------------------------------------------------------------
     // Entity structs
@@ -83,11 +81,6 @@ private:
         QColor color;
     };
 
-    struct Spark {
-        float wx, wy, wz;
-        float speed;
-    };
-
     // ---------------------------------------------------------------
     // Projection helpers — non-static, use moving vanishing point
     // ---------------------------------------------------------------
@@ -105,15 +98,15 @@ private:
     // ---------------------------------------------------------------
     void startGame();
     void startAttract();
+    void startIntro();
     void startCountdown();
     void startHighScoreEntry(int score);
     void endGame();
     void resetChaseGems();
     void spawnBurst(float sx, float sy, bool special);
-    void initSparks();
-    void advanceSparks(float dt, float speedMult = 1.f);
 
     void updateAttract(float dt);
+    void updateIntro(float dt);
     void updateCountdown(float dt);
     void updatePlaying(float dt);
     void updateChasePhysics(float dt);
@@ -127,7 +120,6 @@ private:
     // ---------------------------------------------------------------
     // Rendering passes
     // ---------------------------------------------------------------
-    void drawSparks(QPainter *p) const;
     void drawChaseGems(QPainter *p) const;
     void drawPlayer(QPainter *p) const;
     void drawVisorReveal(QPainter *p, float cx, float cy, float width, float height, float amount) const;
@@ -151,7 +143,6 @@ private:
     QList<ChaseGem>    m_chaseGems;
     QList<ScorePopup>  m_popups;
     QList<BurstParticle> m_bursts;
-    QList<Spark>       m_sparks;
 
     // Vanishing point (moves as the tunnel curves)
     float m_vpX  = CX;
@@ -163,6 +154,7 @@ private:
     float m_score           = 0.f;
     float m_gameOverTimer   = 0.f;
     float m_gameOverIdleTimer = 0.f;
+    float m_introTimer      = 0.f;
     float m_countdownTimer  = 0.f;
     float m_chaseTimer      = 20.f;
     float m_cleanFlightTime = 0.f;

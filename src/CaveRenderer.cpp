@@ -46,52 +46,56 @@ void CaveRenderer::render(QPainter *painter, const Frame &frame) const
 void CaveRenderer::drawSpace(QPainter *painter, const Frame &frame) const
 {
     const QPointF vp = frame.vanishingPoint;
+    const bool enclosed = frame.mode == Mode::EnclosedTunnel;
 
-    QRadialGradient deepSpace(vp.x() + 30.f, vp.y() - 45.f, 360.f);
-    deepSpace.setColorAt(0.00, QColor(15, 28, 42, 220));
-    deepSpace.setColorAt(0.42, QColor(5, 12, 22, 210));
+    QRadialGradient deepSpace(vp.x() + 30.f, vp.y() - 45.f, enclosed ? 240.f : 360.f);
+    deepSpace.setColorAt(0.00, enclosed ? QColor(6, 10, 15, 255) : QColor(15, 28, 42, 220));
+    deepSpace.setColorAt(0.42, enclosed ? QColor(3, 6, 10, 255) : QColor(5, 12, 22, 210));
     deepSpace.setColorAt(1.00, QColor(1, 2, 6, 255));
     painter->setPen(Qt::NoPen);
     painter->setBrush(deepSpace);
     painter->drawRect(QRectF(QPointF(0, 0), frame.logicalSize));
 
-    QRadialGradient aurora(vp.x() - 20.f, vp.y() - 95.f, 330.f);
-    aurora.setColorAt(0.00, QColor(45, 115, 135, 58));
-    aurora.setColorAt(0.32, QColor(20, 75, 115, 36));
-    aurora.setColorAt(0.62, QColor(55, 22, 95, 24));
-    aurora.setColorAt(1.00, QColor(0, 0, 0, 0));
-    painter->setBrush(aurora);
-    painter->drawEllipse(QPointF(vp.x() - 20.f, vp.y() - 95.f), 360.f, 230.f);
+    if (!enclosed) {
+        QRadialGradient aurora(vp.x() - 20.f, vp.y() - 95.f, 330.f);
+        aurora.setColorAt(0.00, QColor(45, 115, 135, 58));
+        aurora.setColorAt(0.32, QColor(20, 75, 115, 36));
+        aurora.setColorAt(0.62, QColor(55, 22, 95, 24));
+        aurora.setColorAt(1.00, QColor(0, 0, 0, 0));
+        painter->setBrush(aurora);
+        painter->drawEllipse(QPointF(vp.x() - 20.f, vp.y() - 95.f), 360.f, 230.f);
 
-    for (const Star &star : m_stars) {
-        const float driftX = std::sin(frame.time * 0.08f + star.twinkle) * 8.f;
-        const float driftY = std::cos(frame.time * 0.05f + star.twinkle) * 4.f;
-        const float twinkle = 0.75f + std::sin(frame.time * 1.4f + star.twinkle) * 0.25f;
-        const int alpha = qBound(35, static_cast<int>(star.brightness * twinkle * 220.f), 230);
-        painter->setBrush(QColor(220, 232, 255, alpha));
-        painter->drawEllipse(star.pos + QPointF(driftX, driftY), star.radius, star.radius);
+        for (const Star &star : m_stars) {
+            const float driftX = std::sin(frame.time * 0.08f + star.twinkle) * 8.f;
+            const float driftY = std::cos(frame.time * 0.05f + star.twinkle) * 4.f;
+            const float twinkle = 0.75f + std::sin(frame.time * 1.4f + star.twinkle) * 0.25f;
+            const int alpha = qBound(35, static_cast<int>(star.brightness * twinkle * 220.f), 230);
+            painter->setBrush(QColor(220, 232, 255, alpha));
+            painter->drawEllipse(star.pos + QPointF(driftX, driftY), star.radius, star.radius);
+        }
+
+        const QPointF polaris(vp.x() + 26.f, vp.y() - 108.f);
+        QRadialGradient polarisGlow(polaris, 22.f);
+        polarisGlow.setColorAt(0.0, QColor(230, 248, 255, 175));
+        polarisGlow.setColorAt(0.3, QColor(110, 190, 220, 70));
+        polarisGlow.setColorAt(1.0, QColor(0, 0, 0, 0));
+        painter->setBrush(polarisGlow);
+        painter->drawEllipse(polaris, 22.f, 22.f);
+        painter->setBrush(QColor(240, 250, 255, 245));
+        painter->drawEllipse(polaris, 2.4f, 2.4f);
     }
-
-    const QPointF polaris(vp.x() + 26.f, vp.y() - 108.f);
-    QRadialGradient polarisGlow(polaris, 22.f);
-    polarisGlow.setColorAt(0.0, QColor(230, 248, 255, 175));
-    polarisGlow.setColorAt(0.3, QColor(110, 190, 220, 70));
-    polarisGlow.setColorAt(1.0, QColor(0, 0, 0, 0));
-    painter->setBrush(polarisGlow);
-    painter->drawEllipse(polaris, 22.f, 22.f);
-    painter->setBrush(QColor(240, 250, 255, 245));
-    painter->drawEllipse(polaris, 2.4f, 2.4f);
 }
 
 void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
 {
     const QPointF vp = frame.vanishingPoint;
+    const bool enclosed = frame.mode == Mode::EnclosedTunnel;
     const float difficulty = std::min(frame.survivalTime / 60.f, 1.f);
     const float breathing = std::sin(frame.time * 0.55f) * 6.f;
-    const float nearW = 505.f - difficulty * 42.f + breathing;
-    const float nearH = 295.f - difficulty * 28.f + breathing * 0.45f;
+    const float nearW = (enclosed ? 455.f : 505.f) - difficulty * 42.f + breathing;
+    const float nearH = (enclosed ? 258.f : 295.f) - difficulty * 28.f + breathing * 0.45f;
 
-    const QList<QPointF> near = caveRing(vp, nearW, nearH, frame.time * 0.18f, 0.22f);
+    const QList<QPointF> near = caveRing(vp, nearW, nearH, frame.time * 0.18f, enclosed ? 0.28f : 0.22f);
 
     QPainterPath wallMask;
     wallMask.addRect(QRectF(QPointF(0, 0), frame.logicalSize));
@@ -108,13 +112,18 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
     edgeShade.setColorAt(1.00, QColor(0, 0, 0, 190));
     painter->fillPath(wallMask, edgeShade);
 
-    const float scales[] = {1.00f, 0.78f, 0.58f, 0.42f, 0.29f, 0.19f, 0.11f};
+    const float openScales[] = {1.00f, 0.78f, 0.58f, 0.42f, 0.29f, 0.19f, 0.11f};
+    const float enclosedScales[] = {1.00f, 0.82f, 0.66f, 0.51f, 0.38f, 0.27f, 0.18f};
     constexpr int ringCount = 7;
 
     QList<QPointF> rings[ringCount];
     for (int i = 0; i < ringCount; ++i) {
-        const float roughness = 0.22f - i * 0.016f;
-        rings[i] = caveRing(vp, nearW * scales[i], nearH * scales[i],
+        const float roughness = (enclosed ? 0.29f : 0.22f) - i * 0.016f;
+        const float scale = enclosed ? enclosedScales[i] : openScales[i];
+        const float swayX = enclosed ? std::sin(frame.time * 0.55f + i * 0.95f) * i * 7.0f : 0.f;
+        const float swayY = enclosed ? std::cos(frame.time * 0.42f + i * 0.85f) * i * 4.6f : 0.f;
+        const QPointF ringVp = vp + QPointF(swayX, swayY);
+        rings[i] = caveRing(ringVp, nearW * scale, nearH * scale,
                             frame.time * 0.18f + i * 0.63f,
                             std::max(0.10f, roughness));
     }
@@ -151,11 +160,22 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
 
     QPainterPath opening = polygonPath(rings[ringCount - 1]);
     painter->setBrush(Qt::NoBrush);
-    const int openingAlpha = static_cast<int>(70.f * (1.f - frame.turnOcclusion * 0.75f));
+    const float baseOpening = enclosed ? 22.f : 70.f;
+    const int openingAlpha = static_cast<int>(baseOpening * (1.f - frame.turnOcclusion * 0.75f));
     painter->setPen(QPen(QColor(50, 150, 145, openingAlpha), 1.2f));
     painter->drawPath(opening);
 
-    if (frame.turnOcclusion > 0.02f) {
+    if (enclosed) {
+        QRadialGradient sealed(vp, 260.f);
+        sealed.setColorAt(0.0, QColor(4, 7, 11, 235));
+        sealed.setColorAt(0.46, QColor(2, 4, 8, 215));
+        sealed.setColorAt(1.0, QColor(0, 0, 0, 0));
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(sealed);
+        painter->drawEllipse(vp, 235.f, 138.f);
+    }
+
+    if (frame.turnOcclusion > 0.02f || enclosed) {
         QPointF turnDir = vp - QPointF(640.f, 360.f);
         const float len = std::hypot(turnDir.x(), turnDir.y());
         if (len > 0.001f)
@@ -163,7 +183,7 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
         else
             turnDir = QPointF(std::sin(frame.time * 0.4f), std::cos(frame.time * 0.33f));
 
-        const float occ = frame.turnOcclusion;
+        const float occ = enclosed ? qMax(0.72f, frame.turnOcclusion) : frame.turnOcclusion;
         const QPointF capCenter = vp + turnDir * (38.f + occ * 74.f);
         QRadialGradient cap(capCenter, 78.f + occ * 125.f);
         cap.setColorAt(0.0, QColor(3, 5, 9, static_cast<int>(190 + occ * 55.f)));

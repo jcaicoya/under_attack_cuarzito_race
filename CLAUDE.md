@@ -38,13 +38,13 @@ Implemented now:
 - `QOpenGLWidget` main game widget.
 - `QTimer` game loop in `GameWidget`.
 - `QPainter` drawing on the OpenGL widget.
-- Attract, Countdown, Playing, GameOver, and HighScoreEntry states.
+- Attract, Intro, Countdown, Playing, GameOver, and HighScoreEntry states.
 - Keyboard, XInput, and optional SDL2 controller input through `InputManager`.
 - Pseudo-3D projection using a moving vanishing point.
 - Four-direction movement inside tunnel bounds.
 - Four persistent chase gems.
 - Chase redesign in progress around world `z`, tunnel path samples, acceleration/braking, and timer-based target captures.
-- Scoring, HUD, score popups, sparks, stars.
+- Scoring, HUD, score popups, burst effects, stars.
 - Procedural placeholder Cuarzito.
 - Dedicated `CaveRenderer` with a QPainter-based faceted cave/space background.
 
@@ -62,7 +62,24 @@ Important files:
 | `src/InputManager.*` | Maps keyboard, XInput, and optional SDL2 controller input to abstract actions. |
 | `CMakeLists.txt` | Qt Widgets plus OpenGL/OpenGLWidgets build. |
 
-The OpenGL widget shell and first `CaveRenderer` are now in place. The next target is visual tuning and, later, optional GLSL internals.
+The OpenGL widget shell and first `CaveRenderer` are now in place, but the current tunnel visual still does not deliver the intended traversal feel.
+
+## Resume Priority
+
+Stopped after a successful compile. The user reported that the result does **not** work as expected. The key point for the next session is:
+
+> Get the walls, floor, and ceiling of the tunnel to move convincingly.
+
+This is the top priority. Do not continue with gameplay, scoring, intro animation, DualSense diagnostics, or the parked 3D labyrinth idea until the tunnel movement feels right.
+
+Next-session direction:
+
+- Work in `CaveRenderer` first.
+- Replace or augment the current static ring/facet look with moving tunnel segments/rings.
+- The player should feel like Cuarzito is traveling through a cave tube: walls, ceiling, and floor pass by the camera.
+- Gameplay mode should usually hide the far space exit. Space can remain visible in attract/intro.
+- Use `frame.worldSpeed`, `frame.time`, `frame.vanishingPoint`, `frame.turnOcclusion`, and eventually `TunnelPath`-derived curve data to drive visual motion.
+- It is acceptable to make a focused renderer prototype before tuning gameplay again.
 
 ## Visual References
 
@@ -105,6 +122,9 @@ Target loop:
 - The cave path bends in x/y as `z` increases, so the tunnel itself creates the 3D challenge.
 - The tunnel should use sharp enough curves and steep enough rises/drops that the far exit is sometimes partly or fully hidden during turns.
 - Current implementation exposes a first `TunnelPath::Sample::occlusion` value and a painter-based cave cap. Later camera/render work should make this more physically convincing.
+- Presentation target: the intro can show the cave mouth and space behind it, with four stones floating before they enter the tunnel. Gameplay should then feel enclosed inside the tunnel, with no persistent far exit.
+- Orange sparks are intentionally removed for now. The 3D feeling should come from moving walls, ceiling, and floor.
+- Parked future idea: a true 3D labyrinth chase with branching tunnels. This is feasible later, but it should not distract from making the current tunnel traversal feel good.
 - Wall, floor, and ceiling collisions reduce Cuarzito's speed and break clean-flight bonuses.
 - Each captured gem adds time.
 - Capturing all four gems wins.
@@ -164,9 +184,8 @@ Target render order:
 
 ```text
 GameWidget::paintGL()
-  -> CaveRenderer::render(...)
+       -> CaveRenderer::render(...)
   -> QPainter begin on GameWidget
-       -> GameScene::drawSparks(...)
        -> GameScene::drawChaseGems(...)
        -> GameScene::drawPlayer(...)
        -> GameScene::drawHUD(...)
@@ -207,11 +226,9 @@ screenY = m_vpY + wy * FOCAL / wz;
 scale   = FOCAL / wz;
 ```
 
-Current important constants for projection and sparks:
+Current important constants for projection:
 
 ```cpp
-SPAWN_Z   = 900;
-REMOVE_Z  = 25;
 FOCAL     = 400;
 ```
 
@@ -232,6 +249,12 @@ The moving vanishing point is a core part of the game feel. Keep the speed cap s
 - [x] Add wall/floor/ceiling speed penalties.
 - [x] Add win state.
 - [x] Retune score around time remaining, captures, wall contacts, and clean flight.
+- [x] Limit Cuarzito's top speed for a more controlled tunnel traversal.
+- [x] Remove orange spark particles from gameplay.
+- [x] Add structural intro/pre-chase state before countdown.
+- [x] Draw first intro screen pass where the cave exit and space are visible before the chase.
+- [x] Make gameplay tunnel feel enclosed, with the far exit usually hidden.
+- [ ] Animate Cuarzito approaching and the stones entering the tunnel during intro.
 
 ### Phase A - Baseline Verification
 
@@ -258,8 +281,9 @@ The moving vanishing point is a core part of the game feel. Keep the speed cap s
 - [x] Build an irregular angular cave opening, not a rectangle.
 - [x] Add star field and one bright Polaris point.
 - [x] Add subtle aurora/fog/glow.
-- [x] Keep orange sparks.
+- [x] Remove orange sparks so the tunnel walls carry the 3D effect.
 - [x] Make cave movement follow the vanishing point.
+- [ ] Replace the current mostly static cave opening with moving tunnel walls, floor, and ceiling.
 - Test readability at 1280x720 and fullscreen.
 
 ### Phase D - Cuarzito Visuals
@@ -315,4 +339,4 @@ enum class GameState {
 
 ## Immediate Next Step
 
-Start with **Phase A**, then move directly into **Phase B**. The current core gameplay is good enough to preserve; the biggest quality gain will come from the rendering refactor and a cave/tunnel that matches the reference art.
+Focus on the cave/tunnel renderer. The next concrete task is to make walls, ceiling, and floor move past the player convincingly during gameplay. Treat this as a visual prototype task inside `CaveRenderer` before doing more chase-game tuning.

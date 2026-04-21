@@ -9,6 +9,11 @@ class QPainter;
 
 class CaveRenderer {
 public:
+    enum class Mode {
+        OpenMouth,
+        EnclosedTunnel,
+    };
+
     struct Frame {
         QSizeF logicalSize;
         QPointF vanishingPoint;
@@ -16,6 +21,7 @@ public:
         float survivalTime = 0.f;
         float worldSpeed = 0.f;
         float turnOcclusion = 0.f;
+        Mode mode = Mode::OpenMouth;
     };
 
     CaveRenderer();
