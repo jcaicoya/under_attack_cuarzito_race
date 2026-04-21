@@ -52,7 +52,8 @@ void GameWidget::paintGL()
         m_scene->vanishingPoint(),
         m_scene->time(),
         m_scene->survivalTime(),
-        m_scene->worldSpeed()
+        m_scene->worldSpeed(),
+        m_scene->turnOcclusion()
     });
     m_scene->render(&painter);
 }

@@ -19,6 +19,12 @@ TunnelPath::Sample TunnelPath::sample(float z) const
 
     result.radius = radiusAt(z);
     result.innerRadius = result.radius * 0.74f;
+
+    const QPointF nearCenter = centerAt(z + 90.f);
+    const QPointF farCenter = centerAt(z + 430.f);
+    const QPointF bend = farCenter - nearCenter;
+    const float bendAmount = qSqrt(bend.x() * bend.x() + bend.y() * bend.y());
+    result.occlusion = qBound(0.f, (bendAmount - 95.f) / 135.f, 1.f);
     return result;
 }
 
@@ -33,12 +39,12 @@ QPointF TunnelPath::gemOffset(int gemIndex, float z) const
 
 QPointF TunnelPath::centerAt(float z)
 {
-    const float x = qSin(z * 0.0065f) * 105.f
-                  + qSin(z * 0.0021f + 1.4f) * 58.f
-                  + qSin(z * 0.0130f + 0.8f) * 18.f;
-    const float y = qCos(z * 0.0054f + 0.5f) * 72.f
-                  + qSin(z * 0.0018f + 2.1f) * 38.f
-                  + qCos(z * 0.0115f) * 14.f;
+    const float x = qSin(z * 0.0084f) * 132.f
+                  + qSin(z * 0.0031f + 1.4f) * 78.f
+                  + qSin(z * 0.0170f + 0.8f) * 28.f;
+    const float y = qCos(z * 0.0072f + 0.5f) * 92.f
+                  + qSin(z * 0.0026f + 2.1f) * 58.f
+                  + qCos(z * 0.0155f) * 24.f;
     return QPointF(x, y);
 }
 

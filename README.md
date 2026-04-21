@@ -82,6 +82,7 @@ Cyan gem is the final target.
 All gems move forward at constant speed.
 Cuarzito's z speed depends on player acceleration, braking, and wall collisions.
 The tunnel path bends through x/y as z increases, like a worm-shaped cave.
+Sharp turns and steep rises/drops should sometimes hide the far tunnel opening, so the player feels the cave wrapping around them instead of seeing a straight exit at all times.
 ```
 
 Design rules to preserve:
@@ -165,12 +166,13 @@ src/
 - [x] Replace the old long-term goal with a chase concept.
 - [x] Define the world model around `z`, speed, tunnel path, and four target gems.
 - [x] Add `TunnelPath` as the source of tunnel center/radius samples by `z`.
+- [x] Sharpen the first tunnel path model and add a turn-occlusion signal for hiding the far opening.
 - [x] Add first chase movement pass: `z`, speed, acceleration, braking, and local tunnel offset.
 - [ ] Remove old survival movement assumptions from remaining obstacle/collectible code.
-- [ ] Replace random collectible spawning with four persistent flying gems.
-- [ ] Add timer extensions per captured gem.
-- [ ] Add wall/floor/ceiling speed penalties.
-- [ ] Add win state for collecting all gems.
+- [x] Replace random collectible spawning with four persistent flying gems.
+- [x] Add timer extensions per captured gem.
+- [x] Add wall/floor/ceiling speed penalties.
+- [x] Add win state for collecting all gems.
 - [ ] Retune scoring for time, clean flight, and gem captures.
 
 ### 1. Verify and Preserve the Prototype

@@ -24,6 +24,7 @@ public:
     float time() const { return m_time; }
     float survivalTime() const { return m_survivalTime; }
     float worldSpeed() const { return m_worldSpeed; }
+    float turnOcclusion() const;
 
 private:
     // ---------------------------------------------------------------
@@ -72,6 +73,17 @@ private:
         bool  special;
     };
 
+    struct ChaseGem {
+        QString name;
+        QColor core;
+        QColor edge;
+        float z = 0.f;
+        float speed = 205.f;
+        float radius = 22.f;
+        int value = 500;
+        bool collected = false;
+    };
+
     struct ScorePopup {
         float sx, sy;
         int   value;
@@ -113,6 +125,7 @@ private:
     void endGame();
     void spawnObstacle();
     void spawnCollectible();
+    void resetChaseGems();
     void spawnBurst(float sx, float sy, bool special);
     void initSparks();
     void advanceSparks(float dt, float speedMult = 1.f);
@@ -133,6 +146,7 @@ private:
     // Rendering passes
     // ---------------------------------------------------------------
     void drawSparks(QPainter *p) const;
+    void drawChaseGems(QPainter *p) const;
     void drawCollectibles(QPainter *p) const;
     void drawObstacles(QPainter *p) const;
     void drawPlayer(QPainter *p) const;
@@ -156,6 +170,7 @@ private:
 
     QList<Obstacle>    m_obstacles;
     QList<Collectible> m_collectibles;
+    QList<ChaseGem>    m_chaseGems;
     QList<ScorePopup>  m_popups;
     QList<BurstParticle> m_bursts;
     QList<Spark>       m_sparks;
@@ -175,10 +190,12 @@ private:
     float m_gameOverTimer   = 0.f;
     float m_gameOverIdleTimer = 0.f;
     float m_countdownTimer  = 0.f;
+    float m_chaseTimer      = 20.f;
     float m_revealTimer     = 0.f;
     float m_revealDuration  = 0.f;
     float m_impactFlash     = 0.f;
     bool  m_scoreSubmitted  = false;
+    bool  m_runWon          = false;
     int   m_pendingScore    = 0;
     int   m_initialIndex    = 0;
     QString m_initials      = "AAA";

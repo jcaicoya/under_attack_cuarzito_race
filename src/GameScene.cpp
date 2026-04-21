@@ -83,6 +83,7 @@ void GameScene::render(QPainter *painter)
     painter->setRenderHint(QPainter::Antialiasing);
 
     drawSparks(painter);
+    drawChaseGems(painter);
     drawCollectibles(painter);
     drawObstacles(painter);
 
@@ -100,6 +101,11 @@ float GameScene::playerLean() const
     if (m_input.isMovingLeft() == m_input.isMovingRight())
         return 0.f;
     return m_input.isMovingLeft() ? -1.f : 1.f;
+}
+
+float GameScene::turnOcclusion() const
+{
+    return m_tunnelPath.sample(m_player.z + 180.f).occlusion;
 }
 
 void GameScene::drawSparks(QPainter *painter) const
@@ -164,6 +170,72 @@ void GameScene::drawObstacles(QPainter *painter) const
         painter->setPen(Qt::NoPen);
         painter->setBrush(QColor(240, 248, 255, static_cast<int>(t * 55.f + 10.f)));
         painter->drawPath(hi);
+    }
+}
+
+void GameScene::drawChaseGems(QPainter *painter) const
+{
+    struct GemDrawRef {
+        const ChaseGem *gem = nullptr;
+        int index = 0;
+    };
+
+    QList<GemDrawRef> sorted;
+    sorted.reserve(m_chaseGems.size());
+    for (int i = 0; i < m_chaseGems.size(); ++i) {
+        const ChaseGem &gem = m_chaseGems[i];
+        if (!gem.collected)
+            sorted.append({&gem, i});
+    }
+    std::sort(sorted.begin(), sorted.end(),
+              [](const GemDrawRef &a, const GemDrawRef &b) { return a.gem->z > b.gem->z; });
+
+    const TunnelPath::Sample playerSample = m_tunnelPath.sample(m_player.z);
+    for (const GemDrawRef &ref : sorted) {
+        const ChaseGem *gem = ref.gem;
+        const float ahead = gem->z - m_player.z;
+        if (ahead < -90.f || ahead > 980.f)
+            continue;
+
+        const TunnelPath::Sample gemSample = m_tunnelPath.sample(gem->z);
+        const QPointF offset = m_tunnelPath.gemOffset(ref.index, gem->z);
+        const QPointF relativeCenter = gemSample.center - playerSample.center;
+        const float renderZ = qBound(90.f, ahead + 245.f, 980.f);
+        const float wx = relativeCenter.x() + offset.x() - m_player.offX * 0.22f;
+        const float wy = relativeCenter.y() + offset.y() - m_player.offY * 0.22f;
+        const float px = projX(wx, renderZ);
+        const float py = projY(wy, renderZ);
+        const float sc = projScale(renderZ);
+        const float r = qBound(7.f, gem->radius * sc, 46.f);
+        const float visible = 1.f - qBound(0.f, gemSample.occlusion * (ahead / 720.f), 0.68f);
+        const int alpha = static_cast<int>(qBound(0.18f, visible, 1.f) * 255.f);
+
+        QRadialGradient glow(px, py, r * 3.0f);
+        glow.setColorAt(0.0, QColor(gem->core.red(), gem->core.green(), gem->core.blue(), alpha / 2));
+        glow.setColorAt(1.0, QColor(0, 0, 0, 0));
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(glow);
+        painter->drawEllipse(QPointF(px, py), r * 3.0f, r * 3.0f);
+
+        QPainterPath body;
+        body.moveTo(px, py - r * 1.18f);
+        body.lineTo(px + r * 0.92f, py - r * 0.12f);
+        body.lineTo(px + r * 0.34f, py + r * 0.94f);
+        body.lineTo(px - r * 0.34f, py + r * 0.94f);
+        body.lineTo(px - r * 0.92f, py - r * 0.12f);
+        body.closeSubpath();
+
+        QLinearGradient facet(px - r, py - r, px + r, py + r);
+        facet.setColorAt(0.0, gem->core.lighter(175));
+        facet.setColorAt(0.45, QColor(gem->core.red(), gem->core.green(), gem->core.blue(), alpha));
+        facet.setColorAt(1.0, gem->core.darker(210));
+        painter->setBrush(facet);
+        painter->setPen(QPen(QColor(gem->edge.red(), gem->edge.green(), gem->edge.blue(), alpha), 1.4f));
+        painter->drawPath(body);
+
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(255, 255, 255, alpha / 3));
+        painter->drawEllipse(QPointF(px - r * 0.22f, py - r * 0.35f), r * 0.22f, r * 0.16f);
     }
 }
 
@@ -477,6 +549,11 @@ void GameScene::updatePlaying(float dt)
 
     advanceSparks(dt);
 
+    for (auto &gem : m_chaseGems) {
+        if (!gem.collected)
+            gem.z += gem.speed * dt;
+    }
+
     // --- Advance obstacles ---
     for (auto &obs : m_obstacles)
         obs.wz -= m_worldSpeed * dt;
@@ -523,11 +600,42 @@ void GameScene::updatePlaying(float dt)
         return false;
     });
 
-    // --- Spawn ---
-    m_spawnTimer -= dt;
-    if (m_spawnTimer <= 0.f) { spawnObstacle();    m_spawnTimer   = m_spawnInterval;   }
-    m_collectTimer -= dt;
-    if (m_collectTimer <= 0.f) { spawnCollectible(); m_collectTimer = m_collectInterval; }
+    for (int i = 0; i < m_chaseGems.size(); ++i) {
+        ChaseGem &gem = m_chaseGems[i];
+        if (gem.collected)
+            continue;
+
+        const float ahead = gem.z - m_player.z;
+        const QPointF targetOffset = m_tunnelPath.gemOffset(i, gem.z);
+        const float dx = m_player.offX - targetOffset.x();
+        const float dy = m_player.offY - targetOffset.y();
+        const float catchRadius = 82.f;
+        if (ahead <= 34.f && ahead > -90.f && dx * dx + dy * dy <= catchRadius * catchRadius) {
+            gem.collected = true;
+            m_chaseTimer += 20.f;
+            m_score += gem.value + qMax(0.f, m_chaseTimer) * 18.f;
+            m_audio.play(SoundCue::CollectSpecial);
+            m_revealDuration = 0.52f;
+            m_revealTimer = m_revealDuration;
+            spawnBurst(playerSX(), playerSY() - 22.f, true);
+            m_popups.append({playerSX(), playerSY() - 42.f, gem.value, 1.0f});
+        }
+    }
+
+    const bool allGemsCollected = std::all_of(m_chaseGems.cbegin(), m_chaseGems.cend(),
+                                             [](const ChaseGem &gem) { return gem.collected; });
+    if (allGemsCollected) {
+        m_score += qMax(0.f, m_chaseTimer) * 75.f;
+        m_runWon = true;
+        endGame();
+        return;
+    }
+
+    m_chaseTimer -= dt;
+    if (m_chaseTimer <= 0.f) {
+        endGame();
+        return;
+    }
 
     // --- Score and difficulty ramp ---
     m_survivalTime   += dt;
@@ -653,6 +761,7 @@ void GameScene::startGame()
 {
     m_obstacles.clear();
     m_collectibles.clear();
+    resetChaseGems();
     m_popups.clear();
     m_bursts.clear();
     m_player = Player{};
@@ -671,10 +780,12 @@ void GameScene::startGame()
     m_gameOverTimer   = 0.f;
     m_gameOverIdleTimer = 0.f;
     m_countdownTimer  = 0.f;
+    m_chaseTimer      = 20.f;
     m_revealTimer     = 0.f;
     m_revealDuration  = 0.f;
     m_impactFlash     = 0.f;
     m_scoreSubmitted  = false;
+    m_runWon          = false;
     m_pendingScore    = 0;
     m_initialIndex    = 0;
     m_state           = GameState::Playing;
@@ -687,6 +798,7 @@ void GameScene::startAttract()
 {
     m_obstacles.clear();
     m_collectibles.clear();
+    m_chaseGems.clear();
     m_popups.clear();
     m_bursts.clear();
     m_player = Player{};
@@ -705,10 +817,12 @@ void GameScene::startAttract()
     m_gameOverTimer   = 0.f;
     m_gameOverIdleTimer = 0.f;
     m_countdownTimer  = 0.f;
+    m_chaseTimer      = 20.f;
     m_revealTimer     = 0.f;
     m_revealDuration  = 0.f;
     m_impactFlash     = 0.f;
     m_scoreSubmitted  = false;
+    m_runWon          = false;
     m_pendingScore    = 0;
     m_initialIndex    = 0;
     m_initials        = "AAA";
@@ -722,6 +836,7 @@ void GameScene::startCountdown()
 {
     m_obstacles.clear();
     m_collectibles.clear();
+    resetChaseGems();
     m_popups.clear();
     m_bursts.clear();
     m_player = Player{};
@@ -740,10 +855,12 @@ void GameScene::startCountdown()
     m_gameOverTimer   = 0.f;
     m_gameOverIdleTimer = 0.f;
     m_countdownTimer  = 3.0f;
+    m_chaseTimer      = 20.f;
     m_revealTimer     = 0.f;
     m_revealDuration  = 0.f;
     m_impactFlash     = 0.f;
     m_scoreSubmitted  = false;
+    m_runWon          = false;
     m_pendingScore    = 0;
     m_initialIndex    = 0;
     m_state           = GameState::Countdown;
@@ -769,7 +886,8 @@ void GameScene::endGame()
         return;
     }
 
-    setOverlay(QString("GAME OVER\n\nScore: %1    Time: %2s\n\nPRESS SPACE TO RESTART")
+    setOverlay(QString("%1\n\nScore: %2    Time: %3s\n\nPRESS SPACE TO RESTART")
+                   .arg(m_runWon ? "YOU WIN" : "GAME OVER")
                    .arg(finalScore)
                    .arg(static_cast<int>(m_survivalTime)));
     m_hudText.clear();
@@ -811,6 +929,16 @@ void GameScene::spawnCollectible()
     c.special = rng->generateDouble() < 0.25;
     c.value   = c.special ? 25 : 10;
     m_collectibles.append(c);
+}
+
+void GameScene::resetChaseGems()
+{
+    m_chaseGems = {
+        {"BLUE",   QColor( 65, 155, 255), QColor(150, 220, 255),  520.f, 205.f, 23.f,  500, false},
+        {"ORANGE", QColor(255, 135,  35), QColor(255, 215, 105),  860.f, 205.f, 25.f,  750, false},
+        {"YELLOW", QColor(255, 230,  65), QColor(255, 250, 170), 1230.f, 205.f, 27.f, 1000, false},
+        {"CYAN",   QColor( 65, 245, 230), QColor(180, 255, 245), 1640.f, 205.f, 30.f, 1500, false},
+    };
 }
 
 void GameScene::spawnBurst(float sx, float sy, bool special)
@@ -855,11 +983,22 @@ QString GameScene::initialsEntryText() const
 
 void GameScene::updateHUD()
 {
+    const int collected = static_cast<int>(std::count_if(m_chaseGems.cbegin(), m_chaseGems.cend(),
+                                                        [](const ChaseGem &gem) { return gem.collected; }));
+    float nextDistance = 0.f;
+    for (const ChaseGem &gem : m_chaseGems) {
+        if (!gem.collected) {
+            nextDistance = qMax(0.f, gem.z - m_player.z);
+            break;
+        }
+    }
+
     m_hudText =
-        QString("SCORE  %1    TIME  %2s    Z  %3    SPEED  %4%5")
+        QString("SCORE  %1    TIMER  %2s    GEM  %3/4    NEXT  %4    SPEED  %5%6")
             .arg(static_cast<int>(m_score), 5)
-            .arg(static_cast<int>(m_survivalTime))
-            .arg(static_cast<int>(m_player.z), 5)
+            .arg(static_cast<int>(qMax(0.f, m_chaseTimer)))
+            .arg(collected)
+            .arg(static_cast<int>(nextDistance), 4)
             .arg(static_cast<int>(m_player.speed), 3)
             .arg(m_player.wallContact ? "  WALL" : "");
 }

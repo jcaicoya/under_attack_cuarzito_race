@@ -103,6 +103,8 @@ Target loop:
 - Gems move forward at constant speed.
 - Cuarzito accelerates and brakes based on player input.
 - The cave path bends in x/y as `z` increases, so the tunnel itself creates the 3D challenge.
+- The tunnel should use sharp enough curves and steep enough rises/drops that the far exit is sometimes partly or fully hidden during turns.
+- Current implementation exposes a first `TunnelPath::Sample::occlusion` value and a painter-based cave cap. Later camera/render work should make this more physically convincing.
 - Wall, floor, and ceiling collisions reduce Cuarzito's speed and break clean-flight bonuses.
 - Each captured gem adds time.
 - Capturing all four gems wins.
@@ -224,12 +226,13 @@ The moving vanishing point is a core part of the game feel. Keep the speed cap s
 - [x] Confirm the chase-game direction.
 - [x] Document the world model around `z`, speed, tunnel path, and four gems.
 - [x] Add `TunnelPath.h/.cpp`.
+- [x] Sharpen the first tunnel path model and add a turn-occlusion signal for hiding the far opening.
 - [x] Add first player physics pass with `z`, speed, acceleration, brake, and local tunnel offset.
 - [ ] Remove old survival movement assumptions from remaining obstacle/collectible code.
-- [ ] Replace random collectibles with four persistent gem targets.
-- [ ] Add gem capture time extensions.
-- [ ] Add wall/floor/ceiling speed penalties.
-- [ ] Add win state.
+- [x] Replace random collectibles with four persistent gem targets.
+- [x] Add gem capture time extensions.
+- [x] Add wall/floor/ceiling speed penalties.
+- [x] Add win state.
 - [ ] Retune score around time remaining, captures, and clean flight.
 
 ### Phase A - Baseline Verification

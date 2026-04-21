@@ -15,6 +15,7 @@ public:
         float time = 0.f;
         float survivalTime = 0.f;
         float worldSpeed = 0.f;
+        float turnOcclusion = 0.f;
     };
 
     CaveRenderer();

@@ -151,8 +151,28 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
 
     QPainterPath opening = polygonPath(rings[ringCount - 1]);
     painter->setBrush(Qt::NoBrush);
-    painter->setPen(QPen(QColor(50, 150, 145, 70), 1.2f));
+    const int openingAlpha = static_cast<int>(70.f * (1.f - frame.turnOcclusion * 0.75f));
+    painter->setPen(QPen(QColor(50, 150, 145, openingAlpha), 1.2f));
     painter->drawPath(opening);
+
+    if (frame.turnOcclusion > 0.02f) {
+        QPointF turnDir = vp - QPointF(640.f, 360.f);
+        const float len = std::hypot(turnDir.x(), turnDir.y());
+        if (len > 0.001f)
+            turnDir /= len;
+        else
+            turnDir = QPointF(std::sin(frame.time * 0.4f), std::cos(frame.time * 0.33f));
+
+        const float occ = frame.turnOcclusion;
+        const QPointF capCenter = vp + turnDir * (38.f + occ * 74.f);
+        QRadialGradient cap(capCenter, 78.f + occ * 125.f);
+        cap.setColorAt(0.0, QColor(3, 5, 9, static_cast<int>(190 + occ * 55.f)));
+        cap.setColorAt(0.55, QColor(8, 12, 18, static_cast<int>(130 + occ * 75.f)));
+        cap.setColorAt(1.0, QColor(0, 0, 0, 0));
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(cap);
+        painter->drawEllipse(capCenter, 92.f + occ * 190.f, 58.f + occ * 128.f);
+    }
 }
 
 void CaveRenderer::drawFloorGlow(QPainter *painter, const Frame &frame) const

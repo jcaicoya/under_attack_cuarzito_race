@@ -9,6 +9,7 @@ public:
         QPointF tangent;
         float radius = 160.f;
         float innerRadius = 118.f;
+        float occlusion = 0.f;
     };
 
     Sample sample(float z) const;
