@@ -6,7 +6,7 @@ Context and working instructions for AI-assisted development on this project.
 
 This is a short arcade pre-show game for the Cuarzito cyber-theatre experience.
 
-The player controls **Cuarzito**, a small dark hooded figure with a neon green visor and blue aura, flying through a cosmic mineral cave. The player dodges obstacles, collects quartz crystals, and survives as long as possible while speed and difficulty ramp up.
+The player controls **Cuarzito**, a small dark hooded figure with a neon green visor and blue aura, flying through a cosmic mineral cave. The design is pivoting from the original obstacle-dodge prototype into a chase game: Cuarzito pursues four flying gems through a winding tunnel before time runs out.
 
 Primary requirements:
 
@@ -42,7 +42,8 @@ Implemented now:
 - Keyboard, XInput, and optional SDL2 controller input through `InputManager`.
 - Pseudo-3D projection using a moving vanishing point.
 - Four-direction movement inside tunnel bounds.
-- Obstacle and collectible spawning.
+- Obstacle and collectible spawning from the previous prototype.
+- Chase redesign in progress around world `z`, tunnel path samples, acceleration/braking, and four persistent target gems.
 - Scoring, HUD, score popups, sparks, stars.
 - Procedural placeholder Cuarzito.
 - Dedicated `CaveRenderer` with a QPainter-based faceted cave/space background.
@@ -56,6 +57,7 @@ Important files:
 | `src/GameWidget.*` | `QOpenGLWidget`, forwards keyboard events, owns timer, cave renderer, and aspect fit. |
 | `src/CaveRenderer.*` | Draws dark faceted cave, space, stars, Polaris, aurora, and floor glow. |
 | `src/GameScene.*` | Game state, entities, projection, updates, drawing. |
+| `src/TunnelPath.*` | Provides deterministic tunnel center/radius samples by world `z` for the chase redesign. |
 | `src/AudioManager.*` | Generates cue tones and a subtle ambient loop, then plays them through `QSoundEffect`. |
 | `src/InputManager.*` | Maps keyboard, XInput, and optional SDL2 controller input to abstract actions. |
 | `CMakeLists.txt` | Qt Widgets plus OpenGL/OpenGLWidgets build. |
@@ -92,16 +94,54 @@ Player direction:
 
 During normal gameplay, Cuarzito is facing away from the camera. Do not draw the full green visor in the default rear-view pose. The visor may be shown only as a small side glimpse during lateral movement, or in explicit start, pickup, and game-over turn/spin animations. At game size, the default pose should read as: dark hooded back silhouette + blue aura.
 
+## Chase Game Design
+
+Target loop:
+
+- Cuarzito starts near `z = 0`.
+- Four gems start ahead at increasing `z` distances.
+- Gems move forward at constant speed.
+- Cuarzito accelerates and brakes based on player input.
+- The cave path bends in x/y as `z` increases, so the tunnel itself creates the 3D challenge.
+- Wall, floor, and ceiling collisions reduce Cuarzito's speed and break clean-flight bonuses.
+- Each captured gem adds time.
+- Capturing all four gems wins.
+- Running out of time loses.
+
+Target controls:
+
+- Steer with arrows/WASD, left stick, or D-pad.
+- Accelerate with Space/Enter now, later A/R2 on gamepad.
+- Brake with Shift/Ctrl target, later B/L2 on gamepad.
+
+Core model:
+
+```text
+TunnelPath.sample(z) -> center x/y, tangent x/y, radius
+
+Player:
+  z
+  speed
+  local x/y offset from tunnel center
+  wall contact state
+
+Gem:
+  color
+  z
+  constant speed
+  local x/y offset from tunnel center
+  collected flag
+```
+
 ## Design Rules
 
 Keep these unless the user explicitly changes the direction:
 
-- One hit equals game over.
 - Collision should be forgiving.
+- Wall/floor/ceiling contact should slow the player, not instantly end the run.
 - The player hitbox should be smaller than the visual.
-- Obstacles should not become active the instant they spawn.
-- Curves/tunnel motion must be survivable by a skilled player.
-- Player, obstacles, and collectibles must remain visually distinct.
+- Tunnel curves must be survivable by a skilled player.
+- Player, walls, and target gems must remain visually distinct.
 - Avoid complex menus.
 - Avoid shooting, enemies, power-ups, or long-form mechanics for now.
 - Prefer robustness and readability over technical showiness.
@@ -178,6 +218,18 @@ FOCAL     = 400;
 The moving vanishing point is a core part of the game feel. Keep the speed cap so the tunnel curve cannot outrun the player.
 
 ## Action List
+
+### Phase 0 - Chase Redesign
+
+- [x] Confirm the chase-game direction.
+- [x] Document the world model around `z`, speed, tunnel path, and four gems.
+- [x] Add `TunnelPath.h/.cpp`.
+- [ ] Refactor player physics to `z`, speed, acceleration, brake, and local tunnel offset.
+- [ ] Replace random collectibles with four persistent gem targets.
+- [ ] Add gem capture time extensions.
+- [ ] Add wall/floor/ceiling speed penalties.
+- [ ] Add win state.
+- [ ] Retune score around time remaining, captures, and clean flight.
 
 ### Phase A - Baseline Verification
 

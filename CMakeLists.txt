@@ -22,6 +22,7 @@ add_executable(cuarzito-race
     src/MainWindow.cpp
     src/GameWidget.cpp
     src/CaveRenderer.cpp
+    src/TunnelPath.cpp
     src/GameScene.cpp
     src/AudioManager.cpp
     src/HighScoreManager.cpp

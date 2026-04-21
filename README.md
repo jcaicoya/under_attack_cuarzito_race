@@ -4,7 +4,7 @@ A short arcade pre-show minigame for the **Cuarzito** cyber-theatre experience. 
 
 The game launches fullscreen by default for event use. Press `F11` to toggle fullscreen/windowed mode during development.
 
-The player controls **Cuarzito**, a small dark hooded figure with a neon green visor, while flying through a cosmic crystal cave. The goal is simple: dodge obstacles, collect quartz crystals, and survive as long as possible as speed and tunnel movement increase.
+The player controls **Cuarzito**, a small dark hooded figure with a neon green visor, while flying through a cosmic crystal cave. The game is pivoting from a survival/dodge prototype into a chase game: Cuarzito pursues four flying gems through a winding tunnel before time runs out.
 
 ## Current State
 
@@ -18,7 +18,8 @@ The repository currently contains a playable Qt prototype with an OpenGL-ready w
 - Keyboard input: arrows/WASD, Space/Enter, Escape.
 - Pseudo-3D projection using a moving vanishing point.
 - Four-direction player movement inside the tunnel.
-- Obstacle spawning, collectible spawning, scoring, popups, sparks, and basic HUD.
+- Obstacle spawning, collectible spawning, scoring, popups, sparks, and basic HUD from the previous prototype.
+- First chase-game infrastructure is being added around a persistent tunnel path and world `z` positions.
 - Procedural placeholder Cuarzito drawn with `QPainter`.
 - Dedicated `CaveRenderer` with a QPainter-based faceted cave/space background.
 
@@ -55,20 +56,40 @@ Reference for the player character:
 
 During normal gameplay, Cuarzito is mostly seen from behind, flying away from the camera. The green visor should not be visible as a full front-facing line in the default rear view. It can appear as a brief side glimpse while moving sideways, or in simple start, pickup, and game-over turn/spin animations. The character should stay simple and iconic; the rear silhouette and blue aura matter more than fine detail.
 
-## Gameplay
+## Gameplay Direction
 
-- **Move:** arrows/WASD, left stick, or D-pad.
-- **Dodge:** gem-like rocks and cave hazards rushing toward the camera.
-- **Collect:** quartz crystals for score.
-- **Survive:** speed, spawn pressure, and cave movement increase over time.
-- **Session target:** most runs should last 20 to 60 seconds.
+The target game is a short chase through a cave/tunnel:
+
+- **Steer:** arrows/WASD, left stick, or D-pad.
+- **Accelerate:** one button/key increases Cuarzito's speed.
+- **Brake:** one button/key reduces speed for tighter control.
+- **Chase:** four colored gems fly ahead of Cuarzito at constant speed.
+- **Catch:** reaching a gem adds time and advances the chase.
+- **Avoid walls:** scraping the wall, floor, or ceiling slows Cuarzito instead of instantly killing him.
+- **Win:** collect all four gems.
+- **Lose:** timer reaches zero before all gems are collected.
+- **Session target:** successful runs should still feel short, around 60 to 90 seconds.
+
+Initial chase model:
+
+```text
+Cuarzito starts near z = 0.
+Blue gem starts ahead.
+Orange gem starts farther ahead.
+Yellow gem starts farther ahead again.
+Cyan gem is the final target.
+
+All gems move forward at constant speed.
+Cuarzito's z speed depends on player acceleration, braking, and wall collisions.
+The tunnel path bends through x/y as z increases, like a worm-shaped cave.
+```
 
 Design rules to preserve:
 
-- One hit equals game over.
 - Collisions should be forgiving.
+- Wall/floor/ceiling impacts should reduce speed and break score bonuses, not instantly end the run.
 - The player must always have enough reaction time.
-- The tunnel/curve motion must be survivable by a skilled player.
+- The tunnel/curve motion must be readable and survivable by a skilled player.
 - The screen must clearly distinguish player, danger, and collectibles.
 - Keyboard fallback must always work in live-event conditions.
 
@@ -129,6 +150,7 @@ src/
 ├── GameWidget.h / .cpp       # QOpenGLWidget, owns rendering loop
 ├── CaveRenderer.h / .cpp     # cave/space/tunnel renderer
 ├── GameScene.h / .cpp        # game state, entities, update, draw passes
+├── TunnelPath.h / .cpp       # world-z tunnel center, radius, and curve samples
 ├── InputManager.h / .cpp
 ├── HighScoreManager.h / .cpp
 └── shaders/
@@ -137,6 +159,18 @@ src/
 ```
 
 ## Action Plan
+
+### 0. Chase-Game Redesign
+
+- [x] Replace the old long-term goal with a chase concept.
+- [x] Define the world model around `z`, speed, tunnel path, and four target gems.
+- [x] Add `TunnelPath` as the source of tunnel center/radius samples by `z`.
+- [ ] Refactor player state from screen-survival movement to chase movement: `z`, speed, acceleration, braking, and local tunnel offset.
+- [ ] Replace random collectible spawning with four persistent flying gems.
+- [ ] Add timer extensions per captured gem.
+- [ ] Add wall/floor/ceiling speed penalties.
+- [ ] Add win state for collecting all gems.
+- [ ] Retune scoring for time, clean flight, and gem captures.
 
 ### 1. Verify and Preserve the Prototype
 
@@ -207,7 +241,8 @@ src/
 | Action | Keyboard now | Gamepad target |
 |---|---|---|
 | Move | Arrows / WASD | Left stick / D-pad |
-| Start / Confirm | Space / Enter | A / Start |
+| Accelerate / Start / Confirm | Space / Enter | A / R2 / Start |
+| Brake | Shift / Ctrl target | B / L2 target |
 | Cancel | Escape | B / Back |
 | Fullscreen toggle | F11 | Optional |
 | Quit development build | Escape | Optional |
