@@ -24,6 +24,16 @@ bool InputManager::isMovingRight() const
     return m_held.contains(Qt::Key_Right) || m_held.contains(Qt::Key_D);
 }
 
+bool InputManager::isMovingUp() const
+{
+    return m_held.contains(Qt::Key_Up) || m_held.contains(Qt::Key_W);
+}
+
+bool InputManager::isMovingDown() const
+{
+    return m_held.contains(Qt::Key_Down) || m_held.contains(Qt::Key_S);
+}
+
 bool InputManager::isConfirmJustPressed() const
 {
     return m_confirmPressed;

@@ -20,8 +20,6 @@ add_executable(cuarzito-race
     src/GameView.cpp
     src/GameScene.cpp
     src/InputManager.cpp
-    src/PlayerCuarzito.cpp
-    src/Obstacle.cpp
 )
 
 target_include_directories(cuarzito-race PRIVATE src)

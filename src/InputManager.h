@@ -10,8 +10,10 @@ public:
     void keyPressed(Qt::Key key);
     void keyReleased(Qt::Key key);
 
-    bool isMovingLeft() const;
+    bool isMovingLeft()  const;
     bool isMovingRight() const;
+    bool isMovingUp()    const;
+    bool isMovingDown()  const;
     bool isConfirmJustPressed() const;
 
     void endFrame();
