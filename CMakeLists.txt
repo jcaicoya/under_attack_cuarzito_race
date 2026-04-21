@@ -14,6 +14,7 @@ find_package(Qt6 COMPONENTS
         Widgets
         OpenGL
         OpenGLWidgets
+        Multimedia
         REQUIRED)
 
 add_executable(cuarzito-race
@@ -22,6 +23,7 @@ add_executable(cuarzito-race
     src/GameWidget.cpp
     src/CaveRenderer.cpp
     src/GameScene.cpp
+    src/AudioManager.cpp
     src/HighScoreManager.cpp
     src/InputManager.cpp
 )
@@ -33,6 +35,7 @@ target_link_libraries(cuarzito-race
         Qt::Widgets
         Qt::OpenGL
         Qt::OpenGLWidgets
+        Qt::Multimedia
 )
 
 if (WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
@@ -56,7 +59,7 @@ if (WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
                 "${QT_INSTALL_PATH}/plugins/platforms/qwindows${DEBUG_SUFFIX}.dll"
                 "$<TARGET_FILE_DIR:${PROJECT_NAME}>/plugins/platforms/")
     endif ()
-    foreach (QT_LIB Core Gui Widgets OpenGL OpenGLWidgets)
+    foreach (QT_LIB Core Gui Widgets OpenGL OpenGLWidgets Multimedia MultimediaWidgets Network)
         add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy
                 "${QT_INSTALL_PATH}/bin/Qt6${QT_LIB}${DEBUG_SUFFIX}.dll"

@@ -1,6 +1,6 @@
 # Cuarzito Pre-Show Game
 
-A short arcade pre-show minigame for the **Cuarzito** cyber-theatre experience. It is built in **C++ / Qt** for Windows and intended to run on a large monitor or TV with keyboard fallback and basic XInput gamepad support.
+A short arcade pre-show minigame for the **Cuarzito** cyber-theatre experience. It is built in **C++ / Qt** for Windows and intended to run on a large monitor or TV with keyboard fallback, XInput support, and optional SDL2 controller support for DualSense.
 
 The game launches fullscreen by default for event use. Press `F11` to toggle fullscreen/windowed mode during development.
 
@@ -85,6 +85,7 @@ Current prototype:
 | Game logic | `GameScene : QObject` |
 | Game loop | `QTimer` around 60 FPS in `GameWidget` |
 | Input | Qt keyboard events |
+| Audio | `Qt::Multimedia` generated tone effects |
 
 Recommended next architecture:
 
@@ -179,6 +180,7 @@ src/
 - Improve attract mode.
 - [x] Add top-10 local high scores in JSON.
 - [x] Show top scores in attract and game-over screens.
+- [x] Draw top scores as a separate side panel for readability.
 - [x] Add 3-letter initials entry.
 - Current flow: `Attract -> Countdown -> Playing -> GameOver -> HighScoreEntry -> Attract`.
 - Game over restarts with confirm or returns to attract after an idle timeout.
@@ -188,14 +190,15 @@ src/
 - [x] Introduce abstract actions: move, confirm, cancel, fullscreen.
 - [x] Map keyboard to actions first.
 - [x] Add basic Windows XInput gamepad support.
+- [x] Add optional dynamic SDL2 controller backend for DualSense.
 - Tune dead zone and sensitivity.
 
 ### 7. Polish for Live Use
 
 - [x] Impact flash.
 - [x] Crystal collection burst.
-- Start, collect, game-over, and high-score sounds.
-- Subtle ambient loop.
+- [x] Start, collect, game-over, and high-score confirm sounds.
+- [x] Subtle generated ambient loop.
 - [x] Fullscreen/event mode toggle with F11.
 - Reliable startup with no missing runtime assets.
 
@@ -208,6 +211,10 @@ src/
 | Cancel | Escape | B / Back |
 | Fullscreen toggle | F11 | Optional |
 | Quit development build | Escape | Optional |
+
+DualSense note: PlayStation controllers usually do not expose themselves as XInput devices. For the show controller, place `SDL2.dll` beside `cuarzito-race.exe` or make it available on `PATH`; the game will load it dynamically and use SDL's controller mapping when present.
+
+Open issue: the current DualSense controller still did not respond in local testing even after the controller was updated and confirmed working elsewhere. Keep keyboard as the reliable fallback for now. Later work should add controller diagnostics, verify whether SDL2 is actually loaded, and inspect the controller GUID/mapping.
 
 ## Build Notes
 

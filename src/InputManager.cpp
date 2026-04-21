@@ -8,6 +8,137 @@
 #include <Xinput.h>
 #endif
 
+namespace {
+
+#ifdef Q_OS_WIN
+class Sdl2ControllerBackend {
+public:
+    Sdl2ControllerBackend()
+    {
+        m_module = LoadLibraryA("SDL2.dll");
+        if (!m_module)
+            return;
+
+        m_initSubSystem = load<InitSubSystemFn>("SDL_InitSubSystem");
+        m_numJoysticks = load<NumJoysticksFn>("SDL_NumJoysticks");
+        m_isGameController = load<IsGameControllerFn>("SDL_IsGameController");
+        m_gameControllerOpen = load<GameControllerOpenFn>("SDL_GameControllerOpen");
+        m_gameControllerClose = load<GameControllerCloseFn>("SDL_GameControllerClose");
+        m_gameControllerUpdate = load<GameControllerUpdateFn>("SDL_GameControllerUpdate");
+        m_gameControllerGetAxis = load<GameControllerGetAxisFn>("SDL_GameControllerGetAxis");
+        m_gameControllerGetButton = load<GameControllerGetButtonFn>("SDL_GameControllerGetButton");
+
+        if (!m_initSubSystem || !m_numJoysticks || !m_isGameController ||
+            !m_gameControllerOpen || !m_gameControllerClose || !m_gameControllerUpdate ||
+            !m_gameControllerGetAxis || !m_gameControllerGetButton) {
+            return;
+        }
+
+        constexpr quint32 SDL_INIT_GAMECONTROLLER = 0x00002000u;
+        m_available = m_initSubSystem(SDL_INIT_GAMECONTROLLER) == 0;
+    }
+
+    ~Sdl2ControllerBackend()
+    {
+        if (m_controller && m_gameControllerClose)
+            m_gameControllerClose(m_controller);
+    }
+
+    QSet<Action> poll()
+    {
+        QSet<Action> actions;
+        if (!m_available)
+            return actions;
+
+        ensureController();
+        if (!m_controller)
+            return actions;
+
+        m_gameControllerUpdate();
+
+        constexpr int AXIS_LEFT_X = 0;
+        constexpr int AXIS_LEFT_Y = 1;
+        constexpr int BUTTON_A = 0;
+        constexpr int BUTTON_B = 1;
+        constexpr int BUTTON_BACK = 4;
+        constexpr int BUTTON_START = 6;
+        constexpr int BUTTON_DPAD_UP = 11;
+        constexpr int BUTTON_DPAD_DOWN = 12;
+        constexpr int BUTTON_DPAD_LEFT = 13;
+        constexpr int BUTTON_DPAD_RIGHT = 14;
+        constexpr qint16 DEAD_ZONE = 9000;
+
+        const qint16 lx = m_gameControllerGetAxis(m_controller, AXIS_LEFT_X);
+        const qint16 ly = m_gameControllerGetAxis(m_controller, AXIS_LEFT_Y);
+
+        if (m_gameControllerGetButton(m_controller, BUTTON_DPAD_LEFT) || lx < -DEAD_ZONE)
+            actions.insert(Action::MoveLeft);
+        if (m_gameControllerGetButton(m_controller, BUTTON_DPAD_RIGHT) || lx > DEAD_ZONE)
+            actions.insert(Action::MoveRight);
+        if (m_gameControllerGetButton(m_controller, BUTTON_DPAD_UP) || ly < -DEAD_ZONE)
+            actions.insert(Action::MoveUp);
+        if (m_gameControllerGetButton(m_controller, BUTTON_DPAD_DOWN) || ly > DEAD_ZONE)
+            actions.insert(Action::MoveDown);
+        if (m_gameControllerGetButton(m_controller, BUTTON_A) ||
+            m_gameControllerGetButton(m_controller, BUTTON_START)) {
+            actions.insert(Action::Confirm);
+        }
+        if (m_gameControllerGetButton(m_controller, BUTTON_B) ||
+            m_gameControllerGetButton(m_controller, BUTTON_BACK)) {
+            actions.insert(Action::Cancel);
+        }
+
+        return actions;
+    }
+
+private:
+    using InitSubSystemFn = int (__cdecl *)(quint32);
+    using NumJoysticksFn = int (__cdecl *)();
+    using IsGameControllerFn = int (__cdecl *)(int);
+    using GameControllerOpenFn = void *(__cdecl *)(int);
+    using GameControllerCloseFn = void (__cdecl *)(void *);
+    using GameControllerUpdateFn = void (__cdecl *)();
+    using GameControllerGetAxisFn = qint16 (__cdecl *)(void *, int);
+    using GameControllerGetButtonFn = quint8 (__cdecl *)(void *, int);
+
+    template <typename Fn>
+    Fn load(const char *name) const
+    {
+        return reinterpret_cast<Fn>(GetProcAddress(m_module, name));
+    }
+
+    void ensureController()
+    {
+        if (m_controller)
+            return;
+
+        const int count = m_numJoysticks();
+        for (int i = 0; i < count; ++i) {
+            if (!m_isGameController(i))
+                continue;
+
+            m_controller = m_gameControllerOpen(i);
+            if (m_controller)
+                return;
+        }
+    }
+
+    HMODULE m_module = nullptr;
+    void *m_controller = nullptr;
+    bool m_available = false;
+    InitSubSystemFn m_initSubSystem = nullptr;
+    NumJoysticksFn m_numJoysticks = nullptr;
+    IsGameControllerFn m_isGameController = nullptr;
+    GameControllerOpenFn m_gameControllerOpen = nullptr;
+    GameControllerCloseFn m_gameControllerClose = nullptr;
+    GameControllerUpdateFn m_gameControllerUpdate = nullptr;
+    GameControllerGetAxisFn m_gameControllerGetAxis = nullptr;
+    GameControllerGetButtonFn m_gameControllerGetButton = nullptr;
+};
+#endif
+
+} // namespace
+
 InputManager::InputManager(QObject *parent) : QObject(parent) {}
 
 void InputManager::keyPressed(Qt::Key key)
@@ -28,7 +159,9 @@ void InputManager::keyReleased(Qt::Key key)
 
 bool InputManager::isHeld(Action action) const
 {
-    return m_heldActions.contains(action) || m_gamepadHeldActions.contains(action);
+    return m_heldActions.contains(action) ||
+           m_gamepadHeldActions.contains(action) ||
+           m_sdlHeldActions.contains(action);
 }
 
 bool InputManager::isJustPressed(Action action) const
@@ -97,6 +230,18 @@ void InputManager::rebuildHeldActions()
 
 void InputManager::updateGamepad()
 {
+    QSet<Action> newSdlHeld;
+#ifdef Q_OS_WIN
+    static Sdl2ControllerBackend sdl2Backend;
+    newSdlHeld = sdl2Backend.poll();
+#endif
+
+    for (Action action : newSdlHeld) {
+        if (!m_sdlHeldActions.contains(action))
+            m_pressedActions.insert(action);
+    }
+    m_sdlHeldActions = newSdlHeld;
+
 #ifdef Q_OS_WIN
     using XInputGetStateFn = DWORD (WINAPI *)(DWORD, XINPUT_STATE *);
 

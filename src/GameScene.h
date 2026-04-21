@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QPointF>
 #include <QString>
+#include "AudioManager.h"
 #include "HighScoreManager.h"
 #include "InputManager.h"
 
@@ -129,6 +130,7 @@ private:
     void drawPopups(QPainter *p) const;
     void drawHUD(QPainter *p) const;
     void drawHighScoreEntry(QPainter *p) const;
+    void drawTopScores(QPainter *p, float x, float y, int maxRows) const;
     void drawImpactFlash(QPainter *p) const;
 
     // ---------------------------------------------------------------
@@ -136,6 +138,7 @@ private:
     // ---------------------------------------------------------------
     GameState    m_state = GameState::Attract;
     InputManager m_input;
+    AudioManager m_audio;
     HighScoreManager m_highScores;
     Player       m_player;
 

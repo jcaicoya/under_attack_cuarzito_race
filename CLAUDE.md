@@ -17,6 +17,8 @@ Primary requirements:
 - Short, replayable runs of about 20 to 60 seconds.
 - Keyboard fallback always available.
 - Basic XInput gamepad support available on Windows.
+- Optional SDL2 controller backend for DualSense. It loads `SDL2.dll` dynamically at runtime.
+- Open issue: the user's DualSense still did not respond in the game after being confirmed working elsewhere. Keyboard remains the reliable fallback; later work should add diagnostics for SDL load status, detected controller count, GUID, and mapping.
 
 ## Current Code Reality
 
@@ -37,7 +39,7 @@ Implemented now:
 - `QTimer` game loop in `GameWidget`.
 - `QPainter` drawing on the OpenGL widget.
 - Attract, Countdown, Playing, GameOver, and HighScoreEntry states.
-- Keyboard and basic XInput gamepad input through `InputManager`.
+- Keyboard, XInput, and optional SDL2 controller input through `InputManager`.
 - Pseudo-3D projection using a moving vanishing point.
 - Four-direction movement inside tunnel bounds.
 - Obstacle and collectible spawning.
@@ -54,7 +56,8 @@ Important files:
 | `src/GameWidget.*` | `QOpenGLWidget`, forwards keyboard events, owns timer, cave renderer, and aspect fit. |
 | `src/CaveRenderer.*` | Draws dark faceted cave, space, stars, Polaris, aurora, and floor glow. |
 | `src/GameScene.*` | Game state, entities, projection, updates, drawing. |
-| `src/InputManager.*` | Maps keyboard and XInput gamepad input to abstract actions. |
+| `src/AudioManager.*` | Generates cue tones and a subtle ambient loop, then plays them through `QSoundEffect`. |
+| `src/InputManager.*` | Maps keyboard, XInput, and optional SDL2 controller input to abstract actions. |
 | `CMakeLists.txt` | Qt Widgets plus OpenGL/OpenGLWidgets build. |
 
 The OpenGL widget shell and first `CaveRenderer` are now in place. The next target is visual tuning and, later, optional GLSL internals.
@@ -234,6 +237,7 @@ enum class GameState {
 - [x] Add countdown before play.
 - [x] Add top-10 local high score persistence.
 - [x] Show top scores in attract and game-over overlays.
+- [x] Draw top scores separately from the main centered overlay for readability.
 - [x] Add 3-letter initials entry.
 - Restart from game over goes through countdown.
 - [x] Return automatically to attract mode after score entry or game-over timeout.
@@ -243,14 +247,15 @@ enum class GameState {
 - [x] Replace direct movement queries with action queries.
 - [x] Keep keyboard mapping.
 - [x] Add basic Windows XInput gamepad support.
+- [x] Add optional dynamic SDL2 backend for DualSense.
 - Tune dead zone and sensitivity.
 
 ### Phase G - Polish
 
 - [x] Add impact flash.
 - [x] Add crystal pickup particle burst.
-- Add start/collect/game-over sounds.
-- Add ambient loop.
+- [x] Add start/collect/game-over/high-score confirm sounds.
+- [x] Add subtle generated ambient loop.
 - [x] Add fullscreen/event mode toggle with F11.
 - Package runtime dependencies cleanly.
 

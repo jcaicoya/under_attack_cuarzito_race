@@ -17,6 +17,7 @@
 GameScene::GameScene(QObject *parent) : QObject(parent)
 {
     initSparks();
+    m_audio.startAmbient();
 
     startAttract();
 }
@@ -526,6 +527,7 @@ void GameScene::updatePlaying(float dt)
         float threshold = pr + 15.f * 1.8f;
         if (dx * dx + dy * dy < threshold * threshold) {
             m_score += c.value;
+            m_audio.play(c.special ? SoundCue::CollectSpecial : SoundCue::Collect);
             m_revealDuration = c.special ? 0.52f : 0.34f;
             m_revealTimer = m_revealDuration;
             spawnBurst(px, py, c.special);
@@ -598,9 +600,11 @@ void GameScene::updateHighScoreEntry(float dt)
 
     if (m_input.isConfirmJustPressed()) {
         if (m_initialIndex < 2) {
+            m_audio.play(SoundCue::Confirm);
             ++m_initialIndex;
         } else {
             m_highScores.addScore(m_initials, m_pendingScore);
+            m_audio.play(SoundCue::Confirm);
             m_scoreSubmitted = true;
             m_pendingScore = 0;
             startAttract();
@@ -716,6 +720,7 @@ void GameScene::startCountdown()
 
     m_hudText.clear();
     setOverlay("3");
+    m_audio.play(SoundCue::Start);
 }
 
 void GameScene::endGame()
@@ -726,6 +731,7 @@ void GameScene::endGame()
     m_revealDuration = 1.5f;
     m_revealTimer    = m_revealDuration;
     m_impactFlash    = 1.f;
+    m_audio.play(SoundCue::GameOver);
 
     const int finalScore = static_cast<int>(m_score);
     if (!m_scoreSubmitted && m_highScores.qualifies(finalScore)) {
@@ -733,10 +739,9 @@ void GameScene::endGame()
         return;
     }
 
-    setOverlay(QString("GAME OVER\n\nScore: %1    Time: %2s\n\n%3\n\nPRESS SPACE TO RESTART")
+    setOverlay(QString("GAME OVER\n\nScore: %1    Time: %2s\n\nPRESS SPACE TO RESTART")
                    .arg(finalScore)
-                   .arg(static_cast<int>(m_survivalTime))
-                   .arg(m_highScores.formattedTopScores(5)));
+                   .arg(static_cast<int>(m_survivalTime)));
     m_hudText.clear();
 }
 
@@ -808,8 +813,7 @@ void GameScene::setOverlay(const QString &text)
 
 QString GameScene::attractOverlayText() const
 {
-    return QString("CUARZITO\n\nPRESS SPACE TO START\n\n%1")
-        .arg(m_highScores.formattedTopScores(5));
+    return "CUARZITO\n\nPRESS SPACE TO START";
 }
 
 QString GameScene::initialsEntryText() const
@@ -856,6 +860,37 @@ void GameScene::drawHUD(QPainter *painter) const
 
     if (m_state == GameState::HighScoreEntry)
         drawHighScoreEntry(painter);
+    else if (m_state == GameState::Attract)
+        drawTopScores(painter, SCENE_W - 360.f, 76.f, 5);
+    else if (m_state == GameState::GameOver)
+        drawTopScores(painter, SCENE_W - 360.f, 76.f, 5);
+
+    painter->restore();
+}
+
+void GameScene::drawTopScores(QPainter *painter, float x, float y, int maxRows) const
+{
+    painter->save();
+
+    QFont titleFont("Courier New", 18, QFont::Bold);
+    painter->setFont(titleFont);
+    painter->setPen(QColor(110, 255, 210, 230));
+    painter->drawText(QPointF(x, y), "TOP SCORES");
+
+    QFont rowFont("Courier New", 15, QFont::Bold);
+    painter->setFont(rowFont);
+    painter->setPen(QColor(225, 245, 255, 215));
+
+    const QList<HighScoreManager::Entry> &entries = m_highScores.entries();
+    const int rows = qMin(maxRows, entries.size());
+    for (int i = 0; i < rows; ++i) {
+        const auto &entry = entries[i];
+        const QString row = QString("%1. %2  %3")
+            .arg(i + 1, 2)
+            .arg(entry.name.leftJustified(3, ' '))
+            .arg(entry.score, 5);
+        painter->drawText(QPointF(x, y + 32.f + i * 25.f), row);
+    }
 
     painter->restore();
 }
