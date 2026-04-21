@@ -230,6 +230,9 @@ void GameScene::drawPlayer(QPainter *painter) const
     const float bob = std::sin(m_time * 7.5f) * 2.2f;
     const float cy = playerSY() + bob;
     const float lean = playerLean();
+    const float reveal = m_revealDuration > 0.f
+        ? qBound(0.f, m_revealTimer / m_revealDuration, 1.f)
+        : 0.f;
     constexpr float W = 50.f, H = 62.f;
 
     // Blue electric aura
@@ -277,7 +280,9 @@ void GameScene::drawPlayer(QPainter *painter) const
     painter->setBrush(Qt::NoBrush);
     painter->drawPath(hoodRidge);
 
-    if (std::abs(lean) > 0.01f) {
+    if (reveal > 0.f) {
+        drawVisorReveal(painter, cx, cy, W, H, reveal);
+    } else if (std::abs(lean) > 0.01f) {
         const float side = lean > 0.f ? 1.f : -1.f;
         const float visorX = cx + side * W * 0.31f;
         const float visorY = cy - H * 0.19f;
@@ -297,6 +302,35 @@ void GameScene::drawPlayer(QPainter *painter) const
                                  1.7f,
                                  1.7f);
     }
+}
+
+void GameScene::drawVisorReveal(QPainter *painter, float cx, float cy, float width, float height, float amount) const
+{
+    const float pulse = std::sin((1.f - amount) * static_cast<float>(M_PI));
+    const float turn = 0.36f + pulse * 0.64f;
+    const float visorY = cy - height * 0.16f;
+    const float visorHW = width * (0.12f + turn * 0.22f);
+    const float visorH = 3.5f + pulse * 1.5f;
+    const int glowAlpha = static_cast<int>((70.f + pulse * 85.f) * amount);
+    const int coreAlpha = static_cast<int>((170.f + pulse * 85.f) * amount);
+
+    QLinearGradient glow(cx - visorHW * 2.0f, visorY, cx + visorHW * 2.0f, visorY);
+    glow.setColorAt(0.0, QColor(0, 255, 80, 0));
+    glow.setColorAt(0.35, QColor(0, 255, 80, glowAlpha));
+    glow.setColorAt(0.5, QColor(120, 255, 145, qMin(glowAlpha + 35, 210)));
+    glow.setColorAt(0.65, QColor(0, 255, 80, glowAlpha));
+    glow.setColorAt(1.0, QColor(0, 255, 80, 0));
+
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(glow);
+    painter->drawRoundedRect(QRectF(cx - visorHW * 2.0f, visorY - 8.f,
+                                    visorHW * 4.0f, 16.f),
+                             8.f, 8.f);
+
+    painter->setBrush(QColor(100, 255, 130, coreAlpha));
+    painter->drawRoundedRect(QRectF(cx - visorHW, visorY - visorH * 0.5f,
+                                    visorHW * 2.f, visorH),
+                             2.f, 2.f);
 }
 
 void GameScene::drawPopups(QPainter *painter) const
@@ -322,6 +356,9 @@ void GameScene::drawPopups(QPainter *painter) const
 
 void GameScene::update(float dt)
 {
+    if (m_revealTimer > 0.f)
+        m_revealTimer = qMax(0.f, m_revealTimer - dt);
+
     switch (m_state) {
     case GameState::Attract:  updateAttract(dt);  break;
     case GameState::Playing:  updatePlaying(dt);  break;
@@ -399,6 +436,8 @@ void GameScene::updatePlaying(float dt)
         float threshold = pr + 15.f * 1.8f;
         if (dx * dx + dy * dy < threshold * threshold) {
             m_score += c.value;
+            m_revealDuration = c.special ? 0.52f : 0.34f;
+            m_revealTimer = m_revealDuration;
             m_popups.append({px, py, c.value, 1.0f});
             return true;
         }
@@ -458,6 +497,8 @@ void GameScene::startGame()
     m_collectInterval = 1.0f;
     m_survivalTime    = 0.f;
     m_score           = 0.f;
+    m_revealTimer     = 0.f;
+    m_revealDuration  = 0.f;
     m_state           = GameState::Playing;
 
     m_hudText.clear();
@@ -468,6 +509,8 @@ void GameScene::endGame()
 {
     m_state         = GameState::GameOver;
     m_gameOverTimer = 1.5f;
+    m_revealDuration = 1.5f;
+    m_revealTimer    = m_revealDuration;
 
     setOverlay(QString("GAME OVER\n\nScore: %1    Time: %2s\n\nPRESS SPACE TO RESTART")
                    .arg(static_cast<int>(m_score))

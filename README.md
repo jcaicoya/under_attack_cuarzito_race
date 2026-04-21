@@ -168,6 +168,7 @@ src/
 - Make the hood and cloak closer to `cuarzito.png`.
 - Keep the default pose rear-facing, with only side glimpses of the neon green visor.
 - Add blue electric aura and subtle idle bob.
+- Add brief visor reveal on crystal pickup and game over.
 - Later option: use a transparent PNG sprite if the procedural version is not close enough.
 
 ### 5. Complete Event Flow

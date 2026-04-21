@@ -106,6 +106,7 @@ private:
     void drawCollectibles(QPainter *p) const;
     void drawObstacles(QPainter *p) const;
     void drawPlayer(QPainter *p) const;
+    void drawVisorReveal(QPainter *p, float cx, float cy, float width, float height, float amount) const;
     void drawPopups(QPainter *p) const;
     void drawHUD(QPainter *p) const;
 
@@ -134,6 +135,8 @@ private:
     float m_survivalTime    = 0.f;
     float m_score           = 0.f;
     float m_gameOverTimer   = 0.f;
+    float m_revealTimer     = 0.f;
+    float m_revealDuration  = 0.f;
 
     QString m_hudText;
     QString m_overlayText;

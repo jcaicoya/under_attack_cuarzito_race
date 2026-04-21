@@ -210,7 +210,8 @@ The moving vanishing point is a core part of the game feel. Keep the speed cap s
 - Make the body darker and simpler.
 - Make the default pose rear-facing; the full visor is not visible from behind.
 - Use only small side visor glimpses during lateral movement.
-- Reserve full visor reveals for start, pickup, and game-over turn/spin animations.
+- Use brief full visor reveals for crystal pickup and game-over feedback.
+- Reserve a more explicit start turn/spin animation for later.
 - Improve blue aura.
 - Add subtle idle bob.
 - Keep the hitbox forgiving and independent from the visual size.
