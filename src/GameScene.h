@@ -1,25 +1,25 @@
 #pragma once
-#include <QGraphicsScene>
-#include <QElapsedTimer>
 #include <QList>
-#include <QTimer>
+#include <QObject>
+#include <QPointF>
+#include <QString>
 #include "InputManager.h"
 
-class QGraphicsTextItem;
+class QPainter;
 
 enum class GameState { Attract, Playing, GameOver };
 
-class GameScene : public QGraphicsScene {
+class GameScene : public QObject {
     Q_OBJECT
 public:
     explicit GameScene(QObject *parent = nullptr);
     InputManager *inputManager() { return &m_input; }
-
-protected:
-    void drawBackground(QPainter *painter, const QRectF &rect) override;
-
-private slots:
-    void tick();
+    void update(float dt);
+    void render(QPainter *painter);
+    QPointF vanishingPoint() const { return QPointF(m_vpX, m_vpY); }
+    float time() const { return m_time; }
+    float survivalTime() const { return m_survivalTime; }
+    float worldSpeed() const { return m_worldSpeed; }
 
 private:
     // ---------------------------------------------------------------
@@ -38,13 +38,6 @@ private:
     static constexpr float PLAYER_SPEED  = 320.f;
     static constexpr float TUNNEL_HALF_W = 220.f;   // gameplay wall boundary
     static constexpr float TUNNEL_HALF_H = 152.f;
-
-    // Visual tunnel opening at the near plane (slightly larger than gameplay bounds)
-    static constexpr float WALL_NEAR_HW = 238.f;
-    static constexpr float WALL_NEAR_HH = 165.f;
-
-    // Near-plane Z used to derive world-space tunnel dimensions
-    static constexpr float NEAR_Z = 60.f;
 
     // ---------------------------------------------------------------
     // Entity structs
@@ -77,10 +70,6 @@ private:
         float speed;
     };
 
-    struct Star {
-        float x, y, r, bright;
-    };
-
     // ---------------------------------------------------------------
     // Projection helpers — non-static, use moving vanishing point
     // ---------------------------------------------------------------
@@ -92,10 +81,6 @@ private:
     float playerSX() const { return m_vpX + m_player.offX; }
     float playerSY() const { return m_vpY + m_player.offY; }
 
-    // Tunnel projected half-widths at a given world Z
-    static float tunnelProjHW(float z) { return WALL_NEAR_HW * NEAR_Z / z; }
-    static float tunnelProjHH(float z) { return WALL_NEAR_HH * NEAR_Z / z; }
-
     // ---------------------------------------------------------------
     // Game flow
     // ---------------------------------------------------------------
@@ -104,7 +89,6 @@ private:
     void spawnObstacle();
     void spawnCollectible();
     void initSparks();
-    void initStars();
     void advanceSparks(float dt, float speedMult = 1.f);
     void updateVP(float dt);
 
@@ -117,12 +101,12 @@ private:
     // ---------------------------------------------------------------
     // Rendering passes
     // ---------------------------------------------------------------
-    void drawEnvironment(QPainter *p) const;
     void drawSparks(QPainter *p) const;
     void drawCollectibles(QPainter *p) const;
     void drawObstacles(QPainter *p) const;
     void drawPlayer(QPainter *p) const;
     void drawPopups(QPainter *p) const;
+    void drawHUD(QPainter *p) const;
 
     // ---------------------------------------------------------------
     // State
@@ -135,11 +119,6 @@ private:
     QList<Collectible> m_collectibles;
     QList<ScorePopup>  m_popups;
     QList<Spark>       m_sparks;
-    QList<Star>        m_stars;
-
-    QTimer        m_timer;
-    QElapsedTimer m_clock;
-    qint64        m_lastMs = 0;
 
     // Vanishing point (moves as the tunnel curves)
     float m_vpX  = CX;
@@ -155,6 +134,6 @@ private:
     float m_score           = 0.f;
     float m_gameOverTimer   = 0.f;
 
-    QGraphicsTextItem *m_hudText     = nullptr;
-    QGraphicsTextItem *m_overlayText = nullptr;
+    QString m_hudText;
+    QString m_overlayText;
 };

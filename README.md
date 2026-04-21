@@ -1,143 +1,230 @@
 # Cuarzito Pre-Show Game
 
-A pre-show arcade minigame for the **Cuarzito** cyber-theatre experience. Built in **C++ with Qt 6**, designed to run on a large monitor or TV and be played with a wireless gamepad.
+A short arcade pre-show minigame for the **Cuarzito** cyber-theatre experience. It is built in **C++ / Qt** for Windows and intended to run on a large monitor or TV with keyboard fallback and, later, wireless gamepad support.
 
-## Purpose
+The player controls **Cuarzito**, a small dark hooded figure with a neon green visor, while flying through a cosmic crystal cave. The goal is simple: dodge obstacles, collect quartz crystals, and survive as long as possible as speed and tunnel movement increase.
 
-Entertainment for the audience while they wait for the show to begin. It needs to be:
+## Current State
 
-- Readable and visually engaging from across the room
-- Immediately understandable with no instructions
-- Fun for kids and adults alike
-- Stable and quick to restart for back-to-back plays
-- Visually consistent with the Cuarzito universe
+The repository currently contains a playable Qt prototype with an OpenGL-ready widget shell:
 
-The player controls **Cuarzito** from a fixed rear-view camera flying through a cosmic crystal cave. The goal is to survive as long as possible by dodging obstacles that rush toward the camera. Speed and difficulty increase over time until the run becomes nearly impossible.
+- `GameWidget : QOpenGLWidget` as the active main game widget.
+- `GameScene : QObject` for game state, updates, projection, and draw helpers.
+- `QPainter` rendering on top of the OpenGL widget.
+- Fixed 1280x720 gameplay canvas.
+- Attract screen, playing state, and game-over state.
+- Keyboard input: arrows/WASD, Space/Enter, Escape.
+- Pseudo-3D projection using a moving vanishing point.
+- Four-direction player movement inside the tunnel.
+- Obstacle spawning, collectible spawning, scoring, popups, sparks, and basic HUD.
+- Procedural placeholder Cuarzito drawn with `QPainter`.
+- Dedicated `CaveRenderer` with a QPainter-based faceted cave/space background.
+
+The prototype proves the core loop works. The current cave renderer is intentionally isolated so it can later be upgraded internally to GLSL without changing gameplay code.
+
+## Visual References
+
+Two root-level PNG files define the desired style.
+
+### `cave.png`
+
+Reference for the cave/tunnel environment:
+
+- Very dark low-poly mineral cave.
+- Central opening into deep space.
+- Stars visible through the cave, including one brighter Polaris-like point.
+- Subtle blue, cyan, and teal glow.
+- Orange spark particles.
+- Floating crystal/gem shapes.
+- Angular rock silhouettes rather than clean rectangular walls.
+
+The game cave should not be photorealistic. It should be stage-readable, dark, atmospheric, and clearly playable from across a room.
+
+### `cuarzito.png`
+
+Reference for the player character:
+
+- Small floating dark hooded figure.
+- Compact black cloak silhouette.
+- No visible legs.
+- One horizontal neon green visor/eye slit.
+- Blue electric aura.
+- Reads instantly at small sizes.
+
+The character should stay simple and iconic. The visor and silhouette matter more than fine detail.
 
 ## Gameplay
 
-- **Move:** all 4 directions around the screen center (gamepad stick or keyboard arrows/WASD)
-- **Dodge:** energy barriers and rock formations that grow from a tiny point at the vanishing point and fill the screen as they approach
-- **Survive:** as long as possible — speed ramps up until the run is nearly unplayable
-- **Collect:** quartz crystals for bonus points *(Phase 2)*
-- **Target session length:** 20 to 60 seconds
+- **Move:** arrows/WASD now; gamepad planned.
+- **Dodge:** gem-like rocks and cave hazards rushing toward the camera.
+- **Collect:** quartz crystals for score.
+- **Survive:** speed, spawn pressure, and cave movement increase over time.
+- **Session target:** most runs should last 20 to 60 seconds.
 
-## Visual concept
+Design rules to preserve:
 
-Pseudo-3D perspective tunnel: camera fixed behind Cuarzito, looking forward into a dark cosmic cave. Obstacles spawn as tiny shapes at the vanishing point and grow toward the player. Hundreds of orange sparks streak outward from the center, giving the sensation of flying at high speed. Perspective grid lines and rectangular depth rings reinforce the tunnel shape.
+- One hit equals game over.
+- Collisions should be forgiving.
+- The player must always have enough reaction time.
+- The tunnel/curve motion must be survivable by a skilled player.
+- The screen must clearly distinguish player, danger, and collectibles.
+- Keyboard fallback must always work in live-event conditions.
 
 ## Tech Stack
 
-| Layer | Choice |
+Current prototype:
+
+| Layer | Current choice |
 |---|---|
-| Language | C++ 23 |
-| Framework | Qt 6.7 (MSVC, Windows) |
-| Rendering | `QGraphicsView` + `QGraphicsScene`, custom `drawBackground` |
-| 3D engine | Hand-rolled perspective projection (`screenX = CX + wx × FOCAL / wz`) |
-| Game loop | `QTimer` ~60 fps, delta-time based |
-| Persistence | JSON (highscores) *(Phase 3)* |
-| Input | Qt keyboard + gamepad fallback *(Phase 4)* |
+| Language | C++23 |
+| Framework | Qt 6.7.3, MSVC, Windows |
+| Main widget | `QOpenGLWidget` |
+| Drawing | `QPainter` on the OpenGL widget |
+| Game logic | `GameScene : QObject` |
+| Game loop | `QTimer` around 60 FPS in `GameWidget` |
+| Input | Qt keyboard events |
 
-## Implementation Plan
+Recommended next architecture:
 
-### Phase 1 — Playable Prototype ✅
-Validate the core movement feel and game loop.
+| Layer | Target choice |
+|---|---|
+| Main widget | `QOpenGLWidget` |
+| Cave/tunnel | `CaveRenderer`, currently QPainter-based and OpenGL-widget backed |
+| Entities/HUD | `QPainter` drawn on top of the OpenGL surface |
+| Game logic | Plain `QObject`/C++ class, not `QGraphicsScene` |
+| Persistence | JSON high scores |
+| Input | Action abstraction with keyboard and gamepad |
 
-- [x] Project skeleton: `MainWindow`, `GameView`, `GameScene`
-- [x] Pseudo-3D perspective tunnel with convergence lines, depth rings, vignette
-- [x] Cuarzito crystal flying in center, 4-directional movement
-- [x] Orange spark particles streaming toward the camera
-- [x] Obstacles growing from vanishing point, back-to-front rendering
-- [x] Collision detection → game over
-- [x] Difficulty ramp (speed + spawn rate over time)
-- [x] Instant restart
-
-**Done when:** it already feels like a Cuarzito arcade runner. ✅
-
----
-
-### Phase 2 — Collection and Scoring ✅
-Make the run measurable and rewarding.
-
-- [x] Quartz collectibles spawning in world space — **green** gem (+10 pts) and **orange** gem (+25 pts), matching the visual reference
-- [x] Survival score (+1 pt/s) + crystal bonus
-- [x] HUD: `SCORE` + `TIME` display
-- [x] Floating score popups on collection (+10 / +25)
-- [x] Collectible spawn rate scales with difficulty
-
-**Done when:** runs are fun and the score reflects how well you played. ✅
-
----
-
-### Phase 3 — Attract Mode and Ranking
-Make it ready to drop into a live event.
-
-- [ ] Attract screen idle state: animated Cuarzito, "PRESS START" prompt, top scores visible
-- [ ] Countdown `3 2 1` before gameplay starts
-- [ ] Top-10 local highscore table (JSON persistence, `highscores.json`)
-- [ ] High-score entry screen (3-letter initials, gamepad-friendly)
-- [ ] Complete flow: Attract → Countdown → Playing → Game Over → High Score Entry → Attract
-
-**Done when:** the game can run unattended at an event.
-
----
-
-### Phase 4 — Wireless Gamepad Support
-Make it robust for public use.
-
-- [ ] Gamepad detection and input mapping (Xbox / generic)
-- [ ] Abstract action layer already in place (`MoveLeft`, `MoveRight`, `MoveUp`, `MoveDown`, `Confirm`, `Cancel`)
-- [ ] Automatic fallback to keyboard
-- [ ] Dead-zone and sensitivity tuning
-
-**Done when:** playing with a wireless controller feels natural and reliable.
-
----
-
-### Phase 5 — Visual and Audio Polish
-Make it stage-ready.
-
-- [ ] Final Cuarzito sprite and idle/hit animations
-- [ ] Impact flash on collision
-- [ ] Crystal collection particle burst
-- [ ] Sound effects: collect, game over, start, high-score entry
-- [ ] Ambient loop music (subtle, spatial, non-intrusive)
-- [ ] Smooth state transitions
-
-**Done when:** it looks and sounds like it belongs on stage.
-
----
-
-## Game States
-
-```
-Attract → Countdown → Playing → GameOver → HighScoreEntry → Attract
-```
-
-Currently implemented: `Attract`, `Playing`, `GameOver`.
+Qt 6.7.3 is enough for the next stage. Moving to another Qt version is acceptable if it solves a real problem, but the game should stay simple and robust.
 
 ## Project Structure
 
-```
+Current files:
+
+```text
 preshow-game/
 ├── CMakeLists.txt
-├── CLAUDE.md
 ├── README.md
-├── .gitignore
+├── CLAUDE.md
+├── cuarzito_preshow_game_design.md
+├── cave.png
+├── cuarzito.png
 └── src/
     ├── main.cpp
     ├── MainWindow.h / .cpp
-    ├── GameView.h / .cpp
-    ├── GameScene.h / .cpp      ← core loop, rendering, all game logic
+    ├── GameWidget.h / .cpp
+    ├── GameScene.h / .cpp
     └── InputManager.h / .cpp
 ```
 
-Future additions will live under `src/` and optionally `assets/`.
+Target files after the rendering refactor:
+
+```text
+src/
+├── main.cpp
+├── MainWindow.h / .cpp
+├── GameWidget.h / .cpp       # QOpenGLWidget, owns rendering loop
+├── CaveRenderer.h / .cpp     # cave/space/tunnel renderer
+├── GameScene.h / .cpp        # game state, entities, update, draw passes
+├── InputManager.h / .cpp
+├── HighScoreManager.h / .cpp
+└── shaders/
+    ├── cave.vert
+    └── cave.frag
+```
+
+## Action Plan
+
+### 1. Verify and Preserve the Prototype
+
+- Build and run the current game.
+- Confirm keyboard input, restart flow, scoring, collisions, and frame pacing.
+- Keep the current gameplay constants as the first tuning baseline.
+
+### 2. Refactor Rendering
+
+- [x] Replace `GameView : QGraphicsView` with `GameWidget : QOpenGLWidget`.
+- [x] Convert `GameScene` from `QGraphicsScene` into a `QObject` game/render helper.
+- [x] Replace `QGraphicsTextItem` HUD/overlay with direct `QPainter` text.
+- [x] Keep entity structs and projection math.
+- [x] Update CMake to link `Qt::OpenGL` and `Qt::OpenGLWidgets`.
+- [x] Extract/replace the old `drawEnvironment()` path with `CaveRenderer`.
+
+### 3. Build the Cave/Tunnel Look
+
+- [x] Implement a first cave renderer that matches `cave.png`:
+  - irregular angular cave boundary,
+  - deep space center,
+  - stars and one bright Polaris point,
+  - subtle aurora/blue-teal glow,
+  - dark faceted rock walls.
+- [x] Keep orange spark motion as a gameplay-layer draw pass.
+- Prefer shader/OpenGL if it gives a clear visual win.
+- Keep gameplay readability above visual detail.
+
+### 4. Upgrade Cuarzito
+
+- Improve the procedural character silhouette.
+- Make the hood and cloak closer to `cuarzito.png`.
+- Strengthen the neon green visor.
+- Add blue electric aura and subtle idle bob.
+- Later option: use a transparent PNG sprite if the procedural version is not close enough.
+
+### 5. Complete Event Flow
+
+- Add `Countdown`.
+- Improve attract mode.
+- Add top-10 local high scores in JSON.
+- Add 3-letter initials entry.
+- Final flow: `Attract -> Countdown -> Playing -> GameOver -> HighScoreEntry -> Attract`.
+
+### 6. Add Gamepad Support
+
+- Introduce abstract actions: move, confirm, cancel.
+- Map keyboard to actions first.
+- Add gamepad support second.
+- Tune dead zone and sensitivity.
+
+### 7. Polish for Live Use
+
+- Impact flash.
+- Crystal collection burst.
+- Start, collect, game-over, and high-score sounds.
+- Subtle ambient loop.
+- Fullscreen/event mode.
+- Reliable startup with no missing runtime assets.
 
 ## Controls
 
-| Action | Gamepad | Keyboard |
+| Action | Keyboard now | Gamepad target |
 |---|---|---|
-| Move | Left stick / D-pad | ← → ↑ ↓ / WASD |
-| Start / Confirm | A / Start | Space / Enter |
-| Quit (dev) | — | Escape |
+| Move | Arrows / WASD | Left stick / D-pad |
+| Start / Confirm | Space / Enter | A / Start |
+| Quit development build | Escape | Optional |
+
+## Build Notes
+
+The current CMake configuration assumes Qt at:
+
+```text
+C:/Qt/6.7.3/msvc2022_64
+```
+
+Current target:
+
+```text
+cuarzito-race
+```
+
+The OpenGL refactor will require:
+
+```cmake
+find_package(Qt6 COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets REQUIRED)
+
+target_link_libraries(cuarzito-race
+    Qt::Core
+    Qt::Gui
+    Qt::Widgets
+    Qt::OpenGL
+    Qt::OpenGLWidgets)
+```

@@ -2,8 +2,8 @@
 #include "GameScene.h"
 #include <QPainter>
 #include <QPainterPath>
-#include <QGraphicsTextItem>
 #include <QFont>
+#include <QFontMetricsF>
 #include <QRandomGenerator>
 #include <QRadialGradient>
 #include <QLinearGradient>
@@ -14,52 +14,16 @@
 // Construction
 // ---------------------------------------------------------------------------
 
-GameScene::GameScene(QObject *parent) : QGraphicsScene(parent)
+GameScene::GameScene(QObject *parent) : QObject(parent)
 {
-    setSceneRect(0, 0, SCENE_W, SCENE_H);
-    setBackgroundBrush(Qt::NoBrush);
-
     initSparks();
-    initStars();
 
-    m_hudText = new QGraphicsTextItem();
-    m_hudText->setFont(QFont("Courier New", 18, QFont::Bold));
-    m_hudText->setDefaultTextColor(QColor(100, 255, 200));
-    m_hudText->setPos(20, 10);
-    m_hudText->setZValue(20);
-    addItem(m_hudText);
-
-    m_overlayText = new QGraphicsTextItem();
-    m_overlayText->setFont(QFont("Courier New", 30, QFont::Bold));
-    m_overlayText->setDefaultTextColor(Qt::white);
-    m_overlayText->setZValue(20);
-    addItem(m_overlayText);
     setOverlay("CUARZITO\n\nPRESS SPACE TO START");
-
-    m_clock.start();
-    connect(&m_timer, &QTimer::timeout, this, &GameScene::tick);
-    m_timer.start(16);
 }
 
 // ---------------------------------------------------------------------------
 // Initialisers
 // ---------------------------------------------------------------------------
-
-void GameScene::initStars()
-{
-    auto *rng = QRandomGenerator::global();
-    m_stars.clear();
-    for (int i = 0; i < 85; ++i) {
-        Star s;
-        float angle  = static_cast<float>(rng->generateDouble() * 2.0 * M_PI);
-        float radius = static_cast<float>(rng->generateDouble()) * 260.f;
-        s.x      = CX + std::cos(angle) * radius * 1.3f;
-        s.y      = (CY - 30.f) + std::sin(angle) * radius * 0.75f;
-        s.r      = 0.4f + static_cast<float>(rng->generateDouble()) * 1.5f;
-        s.bright = 0.25f + static_cast<float>(rng->generateDouble()) * 0.75f;
-        m_stars.append(s);
-    }
-}
 
 void GameScene::initSparks()
 {
@@ -113,12 +77,10 @@ void GameScene::updateVP(float dt)
 // Rendering
 // ---------------------------------------------------------------------------
 
-void GameScene::drawBackground(QPainter *painter, const QRectF &)
+void GameScene::render(QPainter *painter)
 {
     painter->setRenderHint(QPainter::Antialiasing);
-    painter->fillRect(QRectF(0, 0, SCENE_W, SCENE_H), QColor(3, 5, 15));
 
-    drawEnvironment(painter);
     drawSparks(painter);
     drawCollectibles(painter);
     drawObstacles(painter);
@@ -127,104 +89,7 @@ void GameScene::drawBackground(QPainter *painter, const QRectF &)
         drawPlayer(painter);
 
     drawPopups(painter);
-}
-
-void GameScene::drawEnvironment(QPainter *painter) const
-{
-    painter->setPen(Qt::NoPen);
-
-    // --- Stars and aurora (static background visible through tunnel opening) ---
-    QRadialGradient aurora(CX + 40.f, CY * 0.42f, 310.f);
-    aurora.setColorAt(0.00, QColor(20,  70, 110,  55));
-    aurora.setColorAt(0.35, QColor(30,  50,  90,  30));
-    aurora.setColorAt(0.65, QColor(55,  20,  90,  18));
-    aurora.setColorAt(1.00, QColor(  0,  0,   0,   0));
-    painter->setBrush(aurora);
-    painter->drawEllipse(QPointF(CX + 40.f, CY * 0.42f), 310.f, 210.f);
-
-    for (const auto &s : m_stars) {
-        int alpha = static_cast<int>(s.bright * 200.f + 55.f);
-        painter->setBrush(QColor(220, 230, 255, alpha));
-        painter->drawEllipse(QPointF(s.x, s.y), s.r, s.r);
-    }
-
-    // Polaris
-    {
-        constexpr float px = CX + 28.f, py = CY - 95.f;
-        QRadialGradient glow(px, py, 12.f);
-        glow.setColorAt(0.0, QColor(230, 240, 255, 180));
-        glow.setColorAt(1.0, QColor(0, 0, 0, 0));
-        painter->setBrush(glow);
-        painter->drawEllipse(QPointF(px, py), 12.f, 12.f);
-        painter->setBrush(QColor(240, 248, 255, 240));
-        painter->drawEllipse(QPointF(px, py), 2.2f, 2.2f);
-    }
-
-    // --- Cave walls: full-screen mask with rectangular tunnel opening cut out ---
-    QRectF opening(m_vpX - WALL_NEAR_HW, m_vpY - WALL_NEAR_HH,
-                   WALL_NEAR_HW * 2.f, WALL_NEAR_HH * 2.f);
-
-    QPainterPath wallMask;
-    wallMask.addRect(QRectF(0, 0, SCENE_W, SCENE_H));
-    wallMask.addRect(opening);
-    wallMask.setFillRule(Qt::OddEvenFill);
-    painter->fillPath(wallMask, QColor(8, 5, 16));
-
-    // Wall shading: darker at screen edges, slight ambient near the opening
-    QRadialGradient wallShade(m_vpX, m_vpY, SCENE_W * 0.78f);
-    wallShade.setColorAt(0.00, QColor(0, 0, 0,   0));
-    wallShade.setColorAt(0.48, QColor(0, 0, 0,   0));
-    wallShade.setColorAt(0.72, QColor(0, 0, 0,  60));
-    wallShade.setColorAt(1.00, QColor(0, 0, 0, 155));
-    painter->setBrush(wallShade);
-    painter->fillPath(wallMask, wallShade);
-
-    // --- Inner tunnel faces: concentric frames from near opening to VP ---
-    const float depths[] = { NEAR_Z, 90.f, 135.f, 200.f, 300.f, 450.f, 680.f, SPAWN_Z };
-    constexpr int RING_COUNT = 7;
-    for (int i = 0; i < RING_COUNT; ++i) {
-        float hw1 = tunnelProjHW(depths[i]);
-        float hh1 = tunnelProjHH(depths[i]);
-        float hw2 = tunnelProjHW(depths[i + 1]);
-        float hh2 = tunnelProjHH(depths[i + 1]);
-
-        QRectF outerR(m_vpX - hw1, m_vpY - hh1, hw1 * 2.f, hh1 * 2.f);
-        QRectF innerR(m_vpX - hw2, m_vpY - hh2, hw2 * 2.f, hh2 * 2.f);
-
-        float t = static_cast<float>(i) / (RING_COUNT - 1);
-        // Wall faces get slightly darker as they recede
-        int v = static_cast<int>(16.f - t * 9.f);
-        QColor faceCol(v, static_cast<int>(v * 0.62f), static_cast<int>(v * 1.25f));
-
-        QPainterPath ring;
-        ring.addRect(outerR);
-        ring.addRect(innerR);
-        ring.setFillRule(Qt::OddEvenFill);
-        painter->fillPath(ring, faceCol);
-    }
-
-    // --- Perspective convergence lines from each corner of the near opening to VP ---
-    painter->setPen(QPen(QColor(0, 130, 85, 55), 1.0));
-    const QPointF vp(m_vpX, m_vpY);
-    const QPointF corners[4] = {
-        { m_vpX - WALL_NEAR_HW, m_vpY - WALL_NEAR_HH },  // top-left
-        { m_vpX + WALL_NEAR_HW, m_vpY - WALL_NEAR_HH },  // top-right
-        { m_vpX + WALL_NEAR_HW, m_vpY + WALL_NEAR_HH },  // bottom-right
-        { m_vpX - WALL_NEAR_HW, m_vpY + WALL_NEAR_HH },  // bottom-left
-    };
-    for (const auto &c : corners)
-        painter->drawLine(c, vp);
-
-    // Additional edge sub-lines for depth
-    for (int n = 1; n <= 2; ++n) {
-        float tx = static_cast<float>(n) / 3.f;
-        float ex = m_vpX - WALL_NEAR_HW + tx * WALL_NEAR_HW * 2.f;
-        painter->drawLine(QPointF(ex, m_vpY - WALL_NEAR_HH), vp);
-        painter->drawLine(QPointF(ex, m_vpY + WALL_NEAR_HH), vp);
-        float ey = m_vpY - WALL_NEAR_HH + tx * WALL_NEAR_HH * 2.f;
-        painter->drawLine(QPointF(m_vpX - WALL_NEAR_HW, ey), vp);
-        painter->drawLine(QPointF(m_vpX + WALL_NEAR_HW, ey), vp);
-    }
+    drawHUD(painter);
 }
 
 void GameScene::drawSparks(QPainter *painter) const
@@ -435,13 +300,8 @@ void GameScene::drawPopups(QPainter *painter) const
 // Game loop tick
 // ---------------------------------------------------------------------------
 
-void GameScene::tick()
+void GameScene::update(float dt)
 {
-    qint64 now = m_clock.elapsed();
-    float dt   = static_cast<float>(now - m_lastMs) / 1000.f;
-    m_lastMs   = now;
-    dt = qMin(dt, 0.05f);
-
     switch (m_state) {
     case GameState::Attract:  updateAttract(dt);  break;
     case GameState::Playing:  updatePlaying(dt);  break;
@@ -449,7 +309,6 @@ void GameScene::tick()
     }
 
     m_input.endFrame();
-    update();
 }
 
 void GameScene::updateAttract(float dt)
@@ -581,8 +440,8 @@ void GameScene::startGame()
     m_score           = 0.f;
     m_state           = GameState::Playing;
 
-    m_hudText->setPlainText("");
-    m_overlayText->setPlainText("");
+    m_hudText.clear();
+    m_overlayText.clear();
 }
 
 void GameScene::endGame()
@@ -593,7 +452,7 @@ void GameScene::endGame()
     setOverlay(QString("GAME OVER\n\nScore: %1    Time: %2s\n\nPRESS SPACE TO RESTART")
                    .arg(static_cast<int>(m_score))
                    .arg(static_cast<int>(m_survivalTime)));
-    m_hudText->setPlainText("");
+    m_hudText.clear();
 }
 
 void GameScene::spawnObstacle()
@@ -623,16 +482,43 @@ void GameScene::spawnCollectible()
 
 void GameScene::setOverlay(const QString &text)
 {
-    m_overlayText->setPlainText(text);
-    QRectF br = m_overlayText->boundingRect();
-    m_overlayText->setPos((SCENE_W - br.width())  / 2.0,
-                          (SCENE_H - br.height()) / 2.5);
+    m_overlayText = text;
 }
 
 void GameScene::updateHUD()
 {
-    m_hudText->setPlainText(
+    m_hudText =
         QString("SCORE  %1    TIME  %2s")
             .arg(static_cast<int>(m_score), 5)
-            .arg(static_cast<int>(m_survivalTime)));
+            .arg(static_cast<int>(m_survivalTime));
+}
+
+void GameScene::drawHUD(QPainter *painter) const
+{
+    painter->save();
+
+    if (!m_hudText.isEmpty()) {
+        QFont hudFont("Courier New", 18, QFont::Bold);
+        painter->setFont(hudFont);
+        painter->setPen(QColor(100, 255, 200));
+        painter->drawText(QPointF(20.f, 34.f), m_hudText);
+    }
+
+    if (!m_overlayText.isEmpty()) {
+        QFont overlayFont("Courier New", 30, QFont::Bold);
+        painter->setFont(overlayFont);
+        painter->setPen(Qt::white);
+
+        QFontMetricsF metrics(overlayFont);
+        const QRectF bounds = metrics.boundingRect(QRectF(0, 0, SCENE_W, SCENE_H),
+                                                   Qt::AlignCenter,
+                                                   m_overlayText);
+        const QRectF target((SCENE_W - bounds.width()) / 2.f,
+                            (SCENE_H - bounds.height()) / 2.5f,
+                            bounds.width(),
+                            bounds.height());
+        painter->drawText(target, Qt::AlignCenter, m_overlayText);
+    }
+
+    painter->restore();
 }

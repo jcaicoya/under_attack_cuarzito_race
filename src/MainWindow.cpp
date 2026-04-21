@@ -1,12 +1,12 @@
 #include "MainWindow.h"
-#include "GameView.h"
+#include "GameWidget.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
     setWindowTitle("Cuarzito");
     resize(1280, 720);
 
-    auto *view = new GameView(this);
-    setCentralWidget(view);
-    view->setFocus();
+    auto *game = new GameWidget(this);
+    setCentralWidget(game);
+    game->setFocus();
 }

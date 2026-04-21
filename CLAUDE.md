@@ -1,177 +1,253 @@
-# CLAUDE.md — Cuarzito Pre-Show Game
+# CLAUDE.md - Cuarzito Pre-Show Game
 
-Context for AI-assisted development on this project.
+Context and working instructions for AI-assisted development on this project.
 
-## What this is
+## What This Is
 
-A pseudo-3D arcade minigame built in **C++23 / Qt 6.7** (MSVC, Windows). It runs as a pre-show experience at Cuarzito cyber-theatre events — shown on a large screen, played with a wireless gamepad or keyboard. Sessions are short (20–60 s), audience is mixed (kids + adults), stability and simplicity matter more than features.
+This is a short arcade pre-show game for the Cuarzito cyber-theatre experience.
 
-## Visual reference
+The player controls **Cuarzito**, a small dark hooded figure with a neon green visor and blue aura, flying through a cosmic mineral cave. The player dodges obstacles, collects quartz crystals, and survives as long as possible while speed and difficulty ramp up.
 
-Two reference images live in the project root:
+Primary requirements:
 
-- **`cave.png`** — the Cuarzo Polar website hero scene. A dark low-poly cave with the opening revealing deep space: stars, Polaris (one brighter star near center), and a soft aurora/nebula. The cave walls are angular, almost black, with subtle face-lighting. The floor has a glowing cyan light at center. Floating gems of 4 types: grey/silver diamond, purple/magenta diamond, green cube-crystal, orange cube-crystal. Orange sparks pepper the scene. This is the direct visual reference for the game environment.
+- Simple enough to understand instantly.
+- Beautiful enough for a large screen or TV.
+- Robust enough for live event use.
+- Short, replayable runs of about 20 to 60 seconds.
+- Keyboard fallback always available.
+- Gamepad support planned.
 
-- **`cuarzito.png`** — the player character. A small **dark hooded figure** (ghost/specter silhouette), flowing black cloak, no legs visible, floating. The only bright element is a **horizontal neon green visor/eye slit** (think Daft Punk, but green). A blue electric aura surrounds the body. Reads instantly at any size: dark mass + one green line.
+## Current Code Reality
 
-## Platform
+The current codebase is a playable Qt prototype with an OpenGL-ready widget shell.
 
-- OS: Windows 11
-- Compiler: MSVC 2022 (64-bit)
-- Qt: 6.7.3 at `C:/Qt/6.7.3/msvc2022_64`
-- Build system: CMake 4.2+
-- IDE: CLion
+Current architecture:
 
-## Architecture
+```text
+MainWindow
+  -> GameWidget : QOpenGLWidget
+       -> GameScene : QObject
+       -> InputManager
+```
 
-All source files live under `src/`. No subdirectories inside `src/` yet.
+Implemented now:
 
-### Files
+- `QOpenGLWidget` main game widget.
+- `QTimer` game loop in `GameWidget`.
+- `QPainter` drawing on the OpenGL widget.
+- Attract, Playing, and GameOver states.
+- Keyboard input through `InputManager`.
+- Pseudo-3D projection using a moving vanishing point.
+- Four-direction movement inside tunnel bounds.
+- Obstacle and collectible spawning.
+- Scoring, HUD, score popups, sparks, stars.
+- Procedural placeholder Cuarzito.
+- Dedicated `CaveRenderer` with a QPainter-based faceted cave/space background.
 
-| File | Role |
+Important files:
+
+| File | Current role |
 |---|---|
-| `main.cpp` | Entry point. Installs SIGINT/SIGTERM handlers so IDE stop gives exit 0. |
-| `MainWindow` | `QMainWindow`, 1280×720, holds `GameView` as central widget. |
-| `GameView` | `QGraphicsView` subclass. Forwards key events to `InputManager`. Calls `fitInView` on resize so the game scales to any window size. `CacheMode = CacheNone` so `drawBackground` fires every frame. |
-| `GameScene` | **Everything lives here.** `QGraphicsScene` subclass. Owns the game loop (`QTimer` ~60 fps, delta-time), all entity data, state machine, and all rendering via `drawBackground`. Two `QGraphicsTextItem`s for HUD and overlay sit as normal scene items on top. |
-| `InputManager` | Tracks held keys and "just pressed" confirm. `endFrame()` must be called each tick to clear the just-pressed state. |
+| `src/main.cpp` | QApplication entry point and signal handling. |
+| `src/MainWindow.*` | Creates the main window and installs `GameWidget`. |
+| `src/GameWidget.*` | `QOpenGLWidget`, forwards keyboard events, owns timer, cave renderer, and aspect fit. |
+| `src/CaveRenderer.*` | Draws dark faceted cave, space, stars, Polaris, aurora, and floor glow. |
+| `src/GameScene.*` | Game state, entities, projection, updates, drawing. |
+| `src/InputManager.*` | Tracks held keys and just-pressed confirm. |
+| `CMakeLists.txt` | Qt Widgets plus OpenGL/OpenGLWidgets build. |
 
-### Rendering approach
+The OpenGL widget shell and first `CaveRenderer` are now in place. The next target is visual tuning and, later, optional GLSL internals.
 
-All game visuals are painted inside `GameScene::drawBackground`. No `QGraphicsItem` subclasses for game entities — they are plain structs updated and drawn every frame. The two `QGraphicsTextItem` members (`m_hudText`, `m_overlayText`) are ordinary scene items and render on top of `drawBackground` automatically.
+## Visual References
 
-Draw order inside `drawBackground`:
-1. Background fill (near-black)
-2. `drawEnvironment` — stars, Polaris, aurora, low-poly cave rock edges, perspective grid lines, depth rings, radial vignette
-3. `drawSparks` — orange streak particles
-4. `drawObstacles` — grey-blue diamond gem shapes, back-to-front sorted
-5. `drawPlayer` — dark hooded Cuarzito figure with neon green visor (skipped in Attract state)
+Two root-level images define the style.
 
-### Pseudo-3D engine
+### `cave.png`
 
-All entities live in world space `(wx, wy, wz)`. Projection:
+Environment direction:
 
-```cpp
-screenX = CX + wx * FOCAL / wz   // CX = 640, FOCAL = 400
-screenY = CY + wy * FOCAL / wz   // CY = 360
-scale   = FOCAL / wz
+- Dark low-poly cave.
+- Large central opening into space.
+- Almost black faceted rock walls.
+- Blue/cyan/teal glow around the opening and floor.
+- Orange sparks.
+- Star field with one brighter Polaris-like point.
+- Floating crystals/gems.
+
+For gameplay, use this as inspiration rather than a literal static background. The tunnel must remain readable and collision-safe.
+
+### `cuarzito.png`
+
+Player direction:
+
+- Small floating hooded figure.
+- Black/dark cloak with compact silhouette.
+- One neon green horizontal visor.
+- Blue electric aura.
+- No visual clutter.
+
+At game size, Cuarzito must read as: dark hood + green line + blue aura.
+
+## Design Rules
+
+Keep these unless the user explicitly changes the direction:
+
+- One hit equals game over.
+- Collision should be forgiving.
+- The player hitbox should be smaller than the visual.
+- Obstacles should not become active the instant they spawn.
+- Curves/tunnel motion must be survivable by a skilled player.
+- Player, obstacles, and collectibles must remain visually distinct.
+- Avoid complex menus.
+- Avoid shooting, enemies, power-ups, or long-form mechanics for now.
+- Prefer robustness and readability over technical showiness.
+
+## Recommended Target Architecture
+
+Next major refactor:
+
+```text
+MainWindow
+  -> GameWidget : QOpenGLWidget
+       -> CaveRenderer
+       -> GameScene
+       -> InputManager
 ```
 
-Key Z constants (all in `GameScene.h`):
-- `SPAWN_Z = 900` — obstacles/sparks born here (tiny, near vanishing point)
-- `REMOVE_Z = 25` — past the camera, entity removed or recycled
-- `COLLIDE_Z = 460` — collision check only starts below this Z (gives ~1.5 s reaction time)
+Target render order:
 
-### Entity structs (all private in `GameScene`)
-
-```cpp
-struct Player   { float sx, sy; };                           // screen-space position
-struct Obstacle { float wx, wy, wz, wHalfW, wHalfH; };      // world-space
-struct Spark    { float wx, wy, wz, speed; };                // world-space
-struct Star     { float x, y, r, bright; };                  // screen-space, static
+```text
+GameWidget::paintGL()
+  -> CaveRenderer::render(...)
+  -> QPainter begin on GameWidget
+       -> GameScene::drawSparks(...)
+       -> GameScene::drawCollectibles(...)
+       -> GameScene::drawObstacles(...)
+       -> GameScene::drawPlayer(...)
+       -> GameScene::drawHUD(...)
 ```
 
-Stars are static (no scrolling) — they represent the distant sky visible through the cave opening. Concentrated in the center of the screen, thinning toward the dark edges.
+Notes:
 
-### State machine
+- `GameScene` should become pure game logic plus draw helpers. It should not subclass `QGraphicsScene`.
+- HUD should be direct `QPainter` text, not `QGraphicsTextItem`.
+- `CaveRenderer` should know nothing about scoring, collisions, or game state beyond simple uniforms such as time, vanishing point, speed, and survival time.
+- Qt 6.7.3 is acceptable. Another Qt version can be used if it materially improves the result.
 
-```cpp
-enum class GameState { Attract, Playing, GameOver };
-// Future: Countdown, HighScoreEntry
-```
+## OpenGL / Shader Direction
 
-### Input
+Preferred cave renderer:
 
-`InputManager` maps physical keys to logical actions. Current mappings:
+- Fullscreen quad in `QOpenGLWidget`.
+- GLSL fragment shader for cave walls, space, stars, aurora, depth fog, and faceted/noisy cave edge.
+- Uniforms:
 
-| Action | Keys |
+| Uniform | Meaning |
 |---|---|
-| Move left | `Key_Left`, `Key_A` |
-| Move right | `Key_Right`, `Key_D` |
-| Move up | `Key_Up`, `Key_W` |
-| Move down | `Key_Down`, `Key_S` |
-| Confirm | `Key_Space`, `Key_Return`, `Key_Enter` |
-| Quit | `Key_Escape` (handled in `GameView`) |
+| `uResolution` | Widget size in pixels. |
+| `uVP` | Vanishing point in normalized coordinates. |
+| `uTime` | Elapsed seconds. |
+| `uSurvivalTime` | Seconds survived. |
+| `uWorldSpeed` | Current tunnel speed. |
 
-Gamepad support is planned for Phase 4 — the abstract action layer is already in place.
+If the shader path becomes too expensive, a strong `QPainter`/OpenGL-backed procedural cave is acceptable. The visual goal matters more than the specific rendering technique.
 
-## Visual identity
+## Pseudo-3D Projection
 
-Derived from `cave.png` and `cuarzito.png`.
+The current projection model is useful and should be preserved initially:
 
-### Palette
+```cpp
+screenX = m_vpX + wx * FOCAL / wz;
+screenY = m_vpY + wy * FOCAL / wz;
+scale   = FOCAL / wz;
+```
 
-| Element | Colour | Notes |
-|---|---|---|
-| Background | `#030509` (near-black navy) | Deep space / cave interior |
-| Cave rock edges | `#07040e` – `#120b1c` | Very dark purple-grey polygons at screen corners |
-| Stars | `#dce6ff` (low alpha) | Cool white, concentrated around screen center |
-| Aurora | blue-teal-purple soft glow | Behind stars, upper-center area |
-| Sparks | `#ff9114` orange-amber | Streak particles rushing toward camera |
-| Obstacles | `#c8d2e1` → `#232a38` gradient, `#50c8dc` outline | Grey-blue diamond gem shapes |
-| Player body | `#08080f` → `#1a1628` | Dark hooded cloak, near-black |
-| Player visor | `#64ff82` bright + glow | Neon green horizontal eye slit |
-| Player aura | `#0050c8` low alpha | Blue electric glow around body |
-| Tunnel rings | `#00aa6e` low alpha | Dark teal depth cue rectangles |
-| Grid lines | `#0f3728` very low alpha | Convergence lines to vanishing point |
+Current important constants:
 
-### Player (Cuarzito) — `drawPlayer`
+```cpp
+SPAWN_Z   = 900;
+REMOVE_Z  = 25;
+COLLIDE_Z = 460;
+FOCAL     = 400;
+```
 
-Dark hooded spectre. Render order:
-1. Blue radial aura (larger than body, `#0050c8`, ~40 alpha)
-2. Dark cloak body drawn with cubic bezier curves — narrow hood tip at top, widens at shoulders, tapers at bottom
-3. Neon green visor: two layers — soft wide glow rect, then crisp bright bar (`#64ff82`)
+The moving vanishing point is a core part of the game feel. Keep the speed cap so the tunnel curve cannot outrun the player.
 
-### Obstacles — `drawObstacles`
+## Action List
 
-Diamond (4-point) gem shapes. Projected from world space. Render:
-1. Diamond path: top vertex, right, bottom (shorter than top), left
-2. Linear gradient fill: light grey-blue at top-left → dark at bottom-right (illusion of 3D facet)
-3. Top highlight triangle (brighter inner facet)
-4. Cyan-teal outline glow
+### Phase A - Baseline Verification
 
-### Environment — `drawEnvironment`
+- Build the current prototype.
+- Run it locally.
+- Confirm keyboard input.
+- Confirm collisions, scoring, game over, and restart.
+- Note any build/runtime issues before refactoring.
 
-1. Stars: ~80 static dots, normally distributed around center (the sky through the cave)
-2. Polaris: one slightly larger, brighter star near center-upper area, with a small cross-glow
-3. Aurora: soft radial gradient in blue-teal tones, elliptical, upper-center
-4. Cave rock edges: 4 dark low-poly polygon chunks at screen corners (suggesting cave walls)
-5. Perspective convergence lines from vanishing point to all screen edges
-6. Rectangular depth rings at 5 Z-levels
-7. Radial vignette (dark at edges, transparent at center)
+### Phase B - Rendering Refactor
 
-## Design rules to preserve
+- [x] Add `GameWidget.h/.cpp`.
+- [x] Add `CaveRenderer.h/.cpp`.
+- [x] Change `MainWindow` to use `GameWidget`.
+- [x] Move the timer/game loop from `GameScene`/`QGraphicsScene` into `GameWidget`.
+- [x] Convert `GameScene` into a `QObject`.
+- [x] Replace `drawBackground` override with explicit draw methods.
+- [x] Replace `QGraphicsTextItem` with `QPainter` HUD/overlay drawing.
+- [x] Update CMake to link `Qt::OpenGL` and `Qt::OpenGLWidgets`.
 
-- **One hit = game over.** No shields, no lives.
-- **Collision is forgiving by design.** `PLAYER_HITBOX = 15px` (smaller than the visual). Keep it that way.
-- **Never generate impossible patterns.** Always ensure at least one safe corridor exists.
-- **Collision gate (`COLLIDE_Z`).** Keep it — players must see obstacles before they can be hit.
-- **No QGraphicsItem for game entities.** Plain structs + `drawBackground` is the correct pattern.
-- **`CacheMode = CacheNone` on `GameView`.** Required so `drawBackground` redraws every frame.
-- **Palette contrast rule.** Player (dark + green) must remain clearly distinct from obstacles (grey-blue gem) and future collectibles (green crystal, orange crystal). Never make two entity types the same hue.
+### Phase C - Cave/Tunnel Visuals
 
-## What comes next (in order)
+- [x] Implement a dark cave background close to `cave.png`.
+- [x] Build an irregular angular cave opening, not a rectangle.
+- [x] Add star field and one bright Polaris point.
+- [x] Add subtle aurora/fog/glow.
+- [x] Keep orange sparks.
+- [x] Make cave movement follow the vanishing point.
+- Test readability at 1280x720 and fullscreen.
 
-1. ~~**Phase 2**~~ ✅ — Collectibles, scoring, HUD, popups — done.
-2. **Phase 3** — Countdown state (`3 2 1`), attract idle animation, `HighScoreManager` (JSON top-10, `highscores.json`), initials entry screen
-3. **Phase 4** — Gamepad support via Qt 6 gamepad API; dead-zone tuning
-4. **Phase 5** — Sprites/animations for Cuarzito, impact flash on collision, sound effects, ambient loop
+### Phase D - Cuarzito Visuals
 
-_(old Phase 2 notes kept below for reference)_
+- Improve the hood silhouette.
+- Make the body darker and simpler.
+- Make the visor sharper and brighter.
+- Improve blue aura.
+- Add subtle idle bob.
+- Keep the hitbox forgiving and independent from the visual size.
 
-1. **Phase 2** — Collectibles: `Collectible` struct in `GameScene`, two types matching cave.png gems:
-   - Normal quartz: **green** faceted cube-crystal, `+10` pts
-   - Special quartz: **orange** faceted cube-crystal, `+25` pts
-   - Survival score (pts/s), HUD score display
-2. **Phase 3** — Countdown state (`3 2 1`), attract idle animation, `HighScoreManager` (JSON top-10, `highscores.json`), initials entry screen
-3. **Phase 4** — Gamepad support via Qt 6 gamepad API; dead-zone tuning
-4. **Phase 5** — Sprites/animations for Cuarzito, impact flash on collision, sound effects, ambient loop
+### Phase E - Event Flow
 
-## Things to watch out for
+- Expand `GameState` to:
 
-- `QList::removeIf` requires Qt 6 — do not backport to Qt 5 patterns.
-- `QRandomGenerator::global()` is thread-safe and used from main thread only — fine.
-- `drawBackground` always repaints the full scene rect (not just the dirty `rect` param). Intentional.
-- Obstacle `removeIf` happens **before** the collision loop — order matters, do not swap.
-- `m_gameOverTimer` (1.5 s delay) prevents accidental instant restarts. Keep it.
-- Stars are **static** (initialized once, not updated per frame). Do not add per-frame movement to them.
+```cpp
+enum class GameState {
+    Attract,
+    Countdown,
+    Playing,
+    GameOver,
+    HighScoreEntry
+};
+```
+
+- Add countdown before play.
+- Add top-10 local high score persistence.
+- Add 3-letter initials entry.
+- Return automatically to attract mode after score entry or timeout.
+
+### Phase F - Input
+
+- Replace direct movement queries with action queries.
+- Keep keyboard mapping.
+- Add gamepad support.
+- Tune dead zone and sensitivity.
+
+### Phase G - Polish
+
+- Add impact flash.
+- Add crystal pickup particle burst.
+- Add start/collect/game-over sounds.
+- Add ambient loop.
+- Add fullscreen/event mode.
+- Package runtime dependencies cleanly.
+
+## Immediate Next Step
+
+Start with **Phase A**, then move directly into **Phase B**. The current core gameplay is good enough to preserve; the biggest quality gain will come from the rendering refactor and a cave/tunnel that matches the reference art.
