@@ -88,93 +88,165 @@ void CaveRenderer::drawSpace(QPainter *painter, const Frame &frame) const
 
 void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
 {
-    const QPointF vp = frame.vanishingPoint;
-    const bool enclosed = frame.mode == Mode::EnclosedTunnel;
-    const float difficulty = std::min(frame.survivalTime / 60.f, 1.f);
-    const float breathing = std::sin(frame.time * 0.55f) * 6.f;
-    const float nearW = (enclosed ? 455.f : 505.f) - difficulty * 42.f + breathing;
-    const float nearH = (enclosed ? 258.f : 295.f) - difficulty * 28.f + breathing * 0.45f;
+    const QPointF vp       = frame.vanishingPoint;
+    const bool    enclosed = frame.mode == Mode::EnclosedTunnel;
 
-    const QList<QPointF> near = caveRing(vp, nearW, nearH, frame.time * 0.18f, enclosed ? 0.28f : 0.22f);
+    // Projection constants — must match GameScene::FOCAL and TunnelPath world scale.
+    constexpr float FOCAL        = 400.f;
+    constexpr float TUNNEL_R     = 155.f;   // world-space tunnel radius
+    constexpr float ASPECT_Y     = 0.62f;   // vertical compression (cave is wider than tall)
+    constexpr float RING_SPACING = 80.f;    // world units between ring cross-sections
+    constexpr int   NUM_RINGS    = 22;      // rings to place ahead of the camera
+    constexpr float NEAR_CLIP    = 1.f;     // only skip rings at/behind the camera
+
+    // -----------------------------------------------------------------------
+    // 1. Build streaming ring descriptors.
+    //
+    // scrollPhase maps playerZ into [0, RING_SPACING) so rings scroll
+    // continuously without snapping.  rings[0] is the nearest valid ring,
+    // rings[last] is the farthest.
+    // -----------------------------------------------------------------------
+    struct RingDesc {
+        float relZ;      // depth from camera
+        float worldZ;    // absolute world z (pins the shape to the cave geometry)
+        float halfW;
+        float halfH;
+        float phase;     // shape seed — tied to worldZ for stable cave geometry
+        float brightness;
+        float roughness;
+    };
+
+    const float scrollPhase = std::fmod(frame.playerZ, RING_SPACING);
+    const float firstRelZ   = RING_SPACING - scrollPhase;
+
+    QList<RingDesc> rings;
+    rings.reserve(NUM_RINGS);
+
+    for (int i = 0; i < NUM_RINGS; ++i) {
+        const float relZ   = firstRelZ + i * RING_SPACING;
+        if (relZ < NEAR_CLIP) continue;
+
+        const float worldZ = frame.playerZ + relZ;
+        const float halfW  = TUNNEL_R * FOCAL / relZ;
+        if (halfW < 4.f) continue;
+
+        const float depth01    = relZ / (RING_SPACING * NUM_RINGS);
+        const float brightness = std::pow(1.f - std::min(depth01, 1.f), 1.1f);
+        // Near rings get more roughness for dramatic cave wall detail.
+        const float roughness  = 0.24f - depth01 * 0.10f;
+        // Phase: world-z based so the same cave "slice" looks consistent as you approach,
+        // plus a tiny time drift so the walls feel alive.
+        const float phase = worldZ * 0.015f + frame.time * 0.03f;
+
+        rings.append({relZ, worldZ, halfW, halfW * ASPECT_Y, phase, brightness, roughness});
+    }
+
+    if (rings.isEmpty()) return;
+
+    // -----------------------------------------------------------------------
+    // 2. Wall mask — fill the screen with cave rock, punch out the tunnel.
+    //
+    // Use rings[0] (the nearest streaming ring) so the mask and the facets
+    // always agree.  When rings[0] is very large (ring passing the camera)
+    // the mask punch-out covers the whole screen = you are inside the tube,
+    // which is the correct look.
+    // -----------------------------------------------------------------------
+    const RingDesc &maskRing = rings[0];
+    // Cap the mask ring so the OddEvenFill polygon stays screen-sized.
+    // When the nearest ring is larger than the screen, the full screen is
+    // "inside the tunnel" — painting no outer rock, which is correct.
+    constexpr float MASK_CAP = 1200.f;
+    const QList<QPointF> maskPoints = caveRing(vp,
+        std::min(maskRing.halfW, MASK_CAP),
+        std::min(maskRing.halfH, MASK_CAP * ASPECT_Y),
+        maskRing.phase, enclosed ? 0.26f : 0.20f);
 
     QPainterPath wallMask;
     wallMask.addRect(QRectF(QPointF(0, 0), frame.logicalSize));
-    wallMask.addPath(polygonPath(near));
+    wallMask.addPath(polygonPath(maskPoints));
     wallMask.setFillRule(Qt::OddEvenFill);
 
     painter->setPen(Qt::NoPen);
     painter->fillPath(wallMask, QColor(4, 5, 9));
 
     QRadialGradient edgeShade(vp, 820.f);
-    edgeShade.setColorAt(0.00, QColor(0, 0, 0, 0));
-    edgeShade.setColorAt(0.48, QColor(0, 0, 0, 10));
-    edgeShade.setColorAt(0.78, QColor(0, 0, 0, 95));
-    edgeShade.setColorAt(1.00, QColor(0, 0, 0, 190));
+    edgeShade.setColorAt(0.00, QColor(0, 0, 0,   0));
+    edgeShade.setColorAt(0.50, QColor(0, 0, 0,   8));
+    edgeShade.setColorAt(0.78, QColor(0, 0, 0,  90));
+    edgeShade.setColorAt(1.00, QColor(0, 0, 0, 185));
     painter->fillPath(wallMask, edgeShade);
 
-    const float openScales[] = {1.00f, 0.78f, 0.58f, 0.42f, 0.29f, 0.19f, 0.11f};
-    const float enclosedScales[] = {1.00f, 0.82f, 0.66f, 0.51f, 0.38f, 0.27f, 0.18f};
-    constexpr int ringCount = 7;
+    // -----------------------------------------------------------------------
+    // 3. Facet bands — draw from far to near (painter's algorithm).
+    //
+    // rings[r] is nearer (larger) than rings[r+1] (farther/smaller).
+    // Each band's outer boundary = rings[r], inner boundary = rings[r+1].
+    // -----------------------------------------------------------------------
+    for (int r = rings.size() - 2; r >= 0; --r) {
+        const RingDesc &outerRing = rings[r];       // nearer, larger
+        const RingDesc &innerRing = rings[r + 1];   // farther, smaller
 
-    QList<QPointF> rings[ringCount];
-    for (int i = 0; i < ringCount; ++i) {
-        const float roughness = (enclosed ? 0.29f : 0.22f) - i * 0.016f;
-        const float scale = enclosed ? enclosedScales[i] : openScales[i];
-        const float swayX = enclosed ? std::sin(frame.time * 0.55f + i * 0.95f) * i * 7.0f : 0.f;
-        const float swayY = enclosed ? std::cos(frame.time * 0.42f + i * 0.85f) * i * 4.6f : 0.f;
-        const QPointF ringVp = vp + QPointF(swayX, swayY);
-        rings[i] = caveRing(ringVp, nearW * scale, nearH * scale,
-                            frame.time * 0.18f + i * 0.63f,
-                            std::max(0.10f, roughness));
-    }
+        // Qt clips off-screen geometry at the canvas boundary — no need to cap.
+        const QList<QPointF> outerPts = caveRing(vp,
+            outerRing.halfW, outerRing.halfH,
+            outerRing.phase, outerRing.roughness);
+        const QList<QPointF> innerPts = caveRing(vp,
+            innerRing.halfW, innerRing.halfH,
+            innerRing.phase, innerRing.roughness);
 
-    for (int r = ringCount - 2; r >= 0; --r) {
-        const QList<QPointF> &outer = rings[r];
-        const QList<QPointF> &inner = rings[r + 1];
-        const int n = std::min(outer.size(), inner.size());
+        const int n = std::min(outerPts.size(), innerPts.size());
         for (int i = 0; i < n; ++i) {
             const int next = (i + 1) % n;
+
             QPainterPath facet;
-            facet.moveTo(outer[i]);
-            facet.lineTo(outer[next]);
-            facet.lineTo(inner[next]);
-            facet.lineTo(inner[i]);
+            facet.moveTo(outerPts[i]);
+            facet.lineTo(outerPts[next]);
+            facet.lineTo(innerPts[next]);
+            facet.lineTo(innerPts[i]);
             facet.closeSubpath();
 
-            const float depth = static_cast<float>(r) / static_cast<float>(ringCount - 1);
-            const float side = std::sin(i * 1.73f + r * 0.8f) * 0.5f + 0.5f;
-            const int base = static_cast<int>(9.f + depth * 13.f + side * 8.f);
-            const QColor rock(base / 2, base / 2 + 2, base + 7, 238);
-            const QColor edge(18, 42 + static_cast<int>(side * 22.f), 58, 82);
+            const float avgBright = 0.5f * (outerRing.brightness + innerRing.brightness);
+            const float side = std::sin(i * 1.73f + innerRing.phase * 0.9f) * 0.5f + 0.5f;
+            const int   base = static_cast<int>(6.f + avgBright * 20.f + side * 10.f);
+            const QColor rock(base / 2, base / 2 + 2, base + 8, 240);
+            const QColor edge(15, 35 + static_cast<int>(side * 20.f + avgBright * 18.f), 52, 72);
 
-            QLinearGradient grad(outer[i], inner[next]);
-            grad.setColorAt(0.0, rock.darker(150));
+            QLinearGradient grad(outerPts[i], innerPts[next]);
+            grad.setColorAt(0.0, rock.darker(148));
             grad.setColorAt(0.55, rock);
-            grad.setColorAt(1.0, rock.darker(190));
+            grad.setColorAt(1.0, rock.darker(188));
 
             painter->setBrush(grad);
-            painter->setPen(QPen(edge, 0.8f));
+            painter->setPen(QPen(edge, 0.7f));
             painter->drawPath(facet);
         }
     }
 
-    QPainterPath opening = polygonPath(rings[ringCount - 1]);
-    painter->setBrush(Qt::NoBrush);
-    const float baseOpening = enclosed ? 22.f : 70.f;
-    const int openingAlpha = static_cast<int>(baseOpening * (1.f - frame.turnOcclusion * 0.75f));
-    painter->setPen(QPen(QColor(50, 150, 145, openingAlpha), 1.2f));
-    painter->drawPath(opening);
+    // -----------------------------------------------------------------------
+    // 4. Far end cap — fill the innermost (farthest) ring with deep darkness.
+    // -----------------------------------------------------------------------
+    const RingDesc &farEnd = rings.last();
+    const QList<QPointF> endPts = caveRing(vp, farEnd.halfW, farEnd.halfH,
+                                            farEnd.phase, farEnd.roughness);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(QColor(2, 3, 7, 228));
+    painter->drawPath(polygonPath(endPts));
 
+    // -----------------------------------------------------------------------
+    // 5. Enclosed-mode depth fog seals the tunnel centre.
+    // -----------------------------------------------------------------------
     if (enclosed) {
-        QRadialGradient sealed(vp, 260.f);
-        sealed.setColorAt(0.0, QColor(4, 7, 11, 235));
-        sealed.setColorAt(0.46, QColor(2, 4, 8, 215));
+        QRadialGradient sealed(vp, 270.f);
+        sealed.setColorAt(0.0, QColor(3, 6, 10, 240));
+        sealed.setColorAt(0.45, QColor(2, 4, 8, 210));
         sealed.setColorAt(1.0, QColor(0, 0, 0, 0));
-        painter->setPen(Qt::NoPen);
         painter->setBrush(sealed);
-        painter->drawEllipse(vp, 235.f, 138.f);
+        painter->drawEllipse(vp, 240.f, 142.f);
     }
 
+    // -----------------------------------------------------------------------
+    // 6. Turn-occlusion cap (unchanged — blocks the far exit on curves).
+    // -----------------------------------------------------------------------
     if (frame.turnOcclusion > 0.02f || enclosed) {
         QPointF turnDir = vp - QPointF(640.f, 360.f);
         const float len = std::hypot(turnDir.x(), turnDir.y());

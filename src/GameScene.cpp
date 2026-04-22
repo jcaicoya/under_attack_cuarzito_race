@@ -347,8 +347,8 @@ void GameScene::update(float dt)
 
 void GameScene::updateAttract(float dt)
 {
-    // Gentle VP drift so the tunnel feels alive on the attract screen
     m_time += dt;
+    m_tunnelZ += 80.f * dt;
     m_vpX = CX + std::sin(m_time * 0.18f) * 90.f;
     m_vpY = CY + std::sin(m_time * 0.13f + 1.0f) * 65.f;
 
@@ -361,6 +361,7 @@ void GameScene::updateIntro(float dt)
 {
     m_introTimer -= dt;
     m_time += dt;
+    m_tunnelZ += 80.f * dt;
 
     const float t = qBound(0.f, 1.f - m_introTimer / 2.8f, 1.f);
     m_vpX = CX + std::sin(m_time * 0.42f) * (55.f + t * 35.f);
@@ -375,6 +376,7 @@ void GameScene::updateCountdown(float dt)
 {
     m_countdownTimer -= dt;
     m_time += dt;
+    m_tunnelZ += 80.f * dt;
 
     m_vpX = CX + std::sin(m_time * 0.18f) * 70.f;
     m_vpY = CY + std::sin(m_time * 0.13f + 1.0f) * 50.f;
@@ -501,6 +503,8 @@ void GameScene::updateChasePhysics(float dt)
     const float targetVpY = CY + lookAhead.center.y() * 0.74f;
     m_vpX += (targetVpX - m_vpX) * qMin(1.f, dt * 4.4f);
     m_vpY += (targetVpY - m_vpY) * qMin(1.f, dt * 4.4f);
+
+    m_tunnelZ = m_player.z;
 }
 
 void GameScene::updateGameOver(float dt)
@@ -508,6 +512,7 @@ void GameScene::updateGameOver(float dt)
     m_gameOverTimer -= dt;
     m_gameOverIdleTimer -= dt;
     m_time += dt;
+    m_tunnelZ += 80.f * dt;
     m_vpX = CX + std::sin(m_time * 0.18f) * 90.f;
     m_vpY = CY + std::sin(m_time * 0.13f + 1.0f) * 65.f;
     if (m_input.isJustPressed(Action::Cancel))
@@ -521,6 +526,7 @@ void GameScene::updateGameOver(float dt)
 void GameScene::updateHighScoreEntry(float dt)
 {
     m_time += dt;
+    m_tunnelZ += 80.f * dt;
     m_vpX = CX + std::sin(m_time * 0.18f) * 70.f;
     m_vpY = CY + std::sin(m_time * 0.13f + 1.0f) * 50.f;
     if (m_input.isJustPressed(Action::Cancel)) {
@@ -569,9 +575,10 @@ void GameScene::startGame()
     m_bursts.clear();
     m_player = Player{};
 
-    m_vpX  = CX;
-    m_vpY  = CY;
-    m_time = 0.f;
+    m_vpX     = CX;
+    m_vpY     = CY;
+    m_time    = 0.f;
+    m_tunnelZ = 0.f;
 
     m_worldSpeed      = CHASE_BASE_SPEED;
     m_survivalTime    = 0.f;

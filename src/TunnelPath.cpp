@@ -39,12 +39,17 @@ QPointF TunnelPath::gemOffset(int gemIndex, float z) const
 
 QPointF TunnelPath::centerAt(float z)
 {
-    const float x = qSin(z * 0.0084f) * 132.f
-                  + qSin(z * 0.0031f + 1.4f) * 78.f
-                  + qSin(z * 0.0170f + 0.8f) * 28.f;
-    const float y = qCos(z * 0.0072f + 0.5f) * 92.f
-                  + qSin(z * 0.0026f + 2.1f) * 58.f
-                  + qCos(z * 0.0155f) * 24.f;
+    // Four layers per axis: slow sweep, medium curve, tight wiggle, sharp detail.
+    // Frequencies and phases kept different between x/y so the path spirals
+    // rather than oscillating in a single plane.
+    const float x = qSin(z * 0.0094f + 0.3f) * 168.f
+                  + qSin(z * 0.0038f + 1.8f) *  96.f
+                  + qSin(z * 0.0220f + 0.6f) *  40.f
+                  + qSin(z * 0.0490f + 2.3f) *  16.f;
+    const float y = qCos(z * 0.0086f + 0.7f) * 158.f
+                  + qSin(z * 0.0044f + 2.5f) *  92.f
+                  + qCos(z * 0.0195f + 1.2f) *  38.f
+                  + qCos(z * 0.0450f + 0.5f) *  18.f;
     return QPointF(x, y);
 }
 

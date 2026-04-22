@@ -54,6 +54,7 @@ void GameWidget::paintGL()
         m_scene->survivalTime(),
         m_scene->worldSpeed(),
         m_scene->turnOcclusion(),
+        m_scene->tunnelZ(),
         m_scene->caveMode()
     });
     m_scene->render(&painter);

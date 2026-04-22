@@ -25,6 +25,7 @@ public:
     float time() const { return m_time; }
     float survivalTime() const { return m_survivalTime; }
     float worldSpeed() const { return m_worldSpeed; }
+    float tunnelZ() const { return m_tunnelZ; }
     float turnOcclusion() const;
     CaveRenderer::Mode caveMode() const;
 
@@ -150,6 +151,7 @@ private:
     float m_time = 0.f;
 
     float m_worldSpeed      = CHASE_BASE_SPEED;
+    float m_tunnelZ         = 0.f;
     float m_survivalTime    = 0.f;
     float m_score           = 0.f;
     float m_gameOverTimer   = 0.f;

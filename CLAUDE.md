@@ -62,24 +62,30 @@ Important files:
 | `src/InputManager.*` | Maps keyboard, XInput, and optional SDL2 controller input to abstract actions. |
 | `CMakeLists.txt` | Qt Widgets plus OpenGL/OpenGLWidgets build. |
 
-The OpenGL widget shell and first `CaveRenderer` are now in place, but the current tunnel visual still does not deliver the intended traversal feel.
+The tunnel traversal now feels convincing. Walls, floor, and ceiling fill the screen and stream past the camera as Cuarzito moves forward.
 
-## Resume Priority
+## Tunnel Renderer — How It Works
 
-Stopped after a successful compile. The user reported that the result does **not** work as expected. The key point for the next session is:
+`CaveRenderer::drawCave()` uses a **streaming ring system** driven by `frame.playerZ`:
 
-> Get the walls, floor, and ceiling of the tunnel to move convincingly.
+- 22 cross-section rings are placed at world-z intervals of 80 units ahead of the camera.
+- Each ring's projected screen size is `TUNNEL_R * FOCAL / relZ` (155 × 400 / depth).
+- Ring spacing of 80 guarantees that `rings[0]` always projects to ≥ 775px half-width, which exceeds the 640px screen half-width — so the walls always fill the screen with no black gap.
+- Each ring's irregular cave-wall shape is keyed to its **absolute world-z** (`phase = worldZ * 0.015 + time * 0.03`), so the same cave geometry looks consistent as you approach it.
+- Facet bands between adjacent rings are drawn far-to-near (painter's algorithm). The nearest band's outer ring extends off-screen; Qt clips it.
+- `frame.playerZ` is `m_player.z` during gameplay and a gentle 80 units/s drift in all other states.
+- `m_tunnelZ` in `GameScene` carries this value across all states and is exposed as `tunnelZ()`.
 
-This is the top priority. Do not continue with gameplay, scoring, intro animation, DualSense diagnostics, or the parked 3D labyrinth idea until the tunnel movement feels right.
+Key constants in `CaveRenderer::drawCave()`:
 
-Next-session direction:
-
-- Work in `CaveRenderer` first.
-- Replace or augment the current static ring/facet look with moving tunnel segments/rings.
-- The player should feel like Cuarzito is traveling through a cave tube: walls, ceiling, and floor pass by the camera.
-- Gameplay mode should usually hide the far space exit. Space can remain visible in attract/intro.
-- Use `frame.worldSpeed`, `frame.time`, `frame.vanishingPoint`, `frame.turnOcclusion`, and eventually `TunnelPath`-derived curve data to drive visual motion.
-- It is acceptable to make a focused renderer prototype before tuning gameplay again.
+| Constant | Value | Meaning |
+|---|---|---|
+| `TUNNEL_R` | 155 | World-space tunnel radius |
+| `FOCAL` | 400 | Must match `GameScene::FOCAL` |
+| `RING_SPACING` | 80 | World units between rings; keep ≤ 97 so rings[0] always fills the screen |
+| `NUM_RINGS` | 22 | Rings ahead of camera |
+| `NEAR_CLIP` | 1 | Only drops rings exactly at the camera plane |
+| `MASK_CAP` | 1200 | Caps the OddEvenFill mask polygon; must exceed screen half-width (640) |
 
 ## Visual References
 
@@ -254,6 +260,7 @@ The moving vanishing point is a core part of the game feel. Keep the speed cap s
 - [x] Add structural intro/pre-chase state before countdown.
 - [x] Draw first intro screen pass where the cave exit and space are visible before the chase.
 - [x] Make gameplay tunnel feel enclosed, with the far exit usually hidden.
+- [x] Replace the static cave opening with streaming tunnel rings — walls, floor, and ceiling now move convincingly past the camera.
 - [ ] Animate Cuarzito approaching and the stones entering the tunnel during intro.
 
 ### Phase A - Baseline Verification
@@ -283,7 +290,7 @@ The moving vanishing point is a core part of the game feel. Keep the speed cap s
 - [x] Add subtle aurora/fog/glow.
 - [x] Remove orange sparks so the tunnel walls carry the 3D effect.
 - [x] Make cave movement follow the vanishing point.
-- [ ] Replace the current mostly static cave opening with moving tunnel walls, floor, and ceiling.
+- [x] Replace the current mostly static cave opening with moving tunnel walls, floor, and ceiling.
 - Test readability at 1280x720 and fullscreen.
 
 ### Phase D - Cuarzito Visuals
@@ -339,4 +346,9 @@ enum class GameState {
 
 ## Immediate Next Step
 
-Focus on the cave/tunnel renderer. The next concrete task is to make walls, ceiling, and floor move past the player convincingly during gameplay. Treat this as a visual prototype task inside `CaveRenderer` before doing more chase-game tuning.
+Tunnel traversal is working. Next candidates in priority order:
+
+1. **Cuarzito visuals** (Phase D) — improve the hood silhouette, rear-facing default pose, blue aura, and idle bob.
+2. **Intro animation** — animate Cuarzito approaching and the four stones entering the tunnel during the intro state.
+3. **Readability test** — test at 1280×720 and fullscreen on the event screen.
+4. **DualSense diagnostics** — add SDL load status, controller count, GUID, and mapping logs to help diagnose why the DualSense does not respond.

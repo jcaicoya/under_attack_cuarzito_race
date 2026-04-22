@@ -21,6 +21,7 @@ public:
         float survivalTime = 0.f;
         float worldSpeed = 0.f;
         float turnOcclusion = 0.f;
+        float playerZ = 0.f;
         Mode mode = Mode::OpenMouth;
     };
 
