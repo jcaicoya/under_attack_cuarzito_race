@@ -175,34 +175,10 @@ void GameScene::drawPlayer(QPainter *painter) const
     const float reveal = m_revealDuration > 0.f
         ? qBound(0.f, m_revealTimer / m_revealDuration, 1.f)
         : 0.f;
-    constexpr float W = 58.f, H = 72.f;
-
-    const float ax = cx + bobX - lean * 3.f;   // aura centre drifts with bob/lean
+    constexpr float W = 68.f, H = 84.f;
 
     // -----------------------------------------------------------------------
-    // 1. Outer electric aura — wide, vivid blue fill (the dominant visual)
-    // -----------------------------------------------------------------------
-    QRadialGradient outerAura(ax, cy + H * 0.08f, W * 2.6f);
-    outerAura.setColorAt(0.00, QColor(  0,  50, 200,  0));
-    outerAura.setColorAt(0.28, QColor(  0,  90, 230, 62));
-    outerAura.setColorAt(0.55, QColor( 15, 160, 245, 44));
-    outerAura.setColorAt(0.80, QColor( 30, 200, 255, 22));
-    outerAura.setColorAt(1.00, QColor(  0,   0,   0,  0));
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(outerAura);
-    painter->drawEllipse(QPointF(ax, cy + H * 0.08f), W * 2.6f, W * 1.9f);
-
-    // Inner concentrated aura — tighter, brighter core
-    QRadialGradient innerAura(ax, cy + H * 0.02f, W * 1.15f);
-    innerAura.setColorAt(0.00, QColor(  0,  60, 200, 18));
-    innerAura.setColorAt(0.35, QColor(  0, 120, 255, 92));
-    innerAura.setColorAt(0.65, QColor( 45, 190, 255, 68));
-    innerAura.setColorAt(1.00, QColor(  0,   0,   0,  0));
-    painter->setBrush(innerAura);
-    painter->drawEllipse(QPointF(ax, cy + H * 0.02f), W * 1.15f, W * 0.88f);
-
-    // -----------------------------------------------------------------------
-    // 2. Cloak — rear-view hooded figure flying away from camera.
+    // Cloak — rear-view hooded figure flying away from camera.
     //    Hood is a rounded dome, cloak fans out and flows below.
     // -----------------------------------------------------------------------
     const float hoodPeakX = cx + bobX + lean * 2.f;
@@ -242,7 +218,7 @@ void GameScene::drawPlayer(QPainter *painter) const
     painter->drawPath(cloak);
 
     // -----------------------------------------------------------------------
-    // 3. Hood detail lines — center-back seam and shoulder rim
+    // Hood detail lines — center-back seam and shoulder rim
     // -----------------------------------------------------------------------
     // Center seam: a faint crease down the back of the hood dome
     QPainterPath seam;
@@ -264,7 +240,7 @@ void GameScene::drawPlayer(QPainter *painter) const
     painter->drawPath(rim);
 
     // -----------------------------------------------------------------------
-    // 4. Visor — side glimpse when leaning, full reveal on collect / game-over
+    // Visor — side glimpse when leaning, full reveal on collect / game-over
     // -----------------------------------------------------------------------
     if (reveal > 0.f) {
         drawVisorReveal(painter, cx + bobX, cy, W, H, reveal);
@@ -572,16 +548,20 @@ void GameScene::updateChasePhysics(float dt)
 
     m_player.speed = qBound(CHASE_MIN_SPEED, m_player.speed, CHASE_MAX_SPEED);
 
-    // --- Centripetal force BEFORE wall clamp so the clamp can catch it ---
-    // Pushes Cuarzito toward the outer wall on curves (racing physics).
-    // Tuning: CENTRIPETAL_K — raise to make curves harder, lower to ease them.
-    // Centripetal force: outer-wall drift proportional to curvature × speed².
-    // Sign is positive: right curve (curvH>0) → offX grows → player drifts
-    // toward the right (outer) wall relative to VP. Player must steer left.
-    constexpr float CENTRIPETAL_K = 0.04f;
+    // --- Curve inertia BEFORE wall clamp so the clamp can catch it ---
+    // The tunnel turns under Cuarzito. If the player does not steer into the
+    // curve, inertia carries him toward the outside wall.
+    //
+    // Sign convention:
+    //   left curve  (curvH < 0) -> offX grows  -> right/outside wall
+    //   right curve (curvH > 0) -> offX shrinks -> left/outside wall
+    //
+    // Tuning target: with no steering, the first 45-degree left turn should
+    // push Cuarzito into the right wall near the end of the curve.
+    constexpr float CURVE_INERTIA_K = 1.60f;
     const TunnelPath::Sample physSample = m_tunnelPath.sample(m_player.z);
-    m_player.offX += physSample.curvatureH * m_player.speed * m_player.speed * CENTRIPETAL_K * dt;
-    m_player.offY += physSample.curvatureV * m_player.speed * m_player.speed * CENTRIPETAL_K * dt;
+    m_player.offX -= physSample.curvatureH * m_player.speed * m_player.speed * CURVE_INERTIA_K * dt;
+    m_player.offY -= physSample.curvatureV * m_player.speed * m_player.speed * CURVE_INERTIA_K * dt;
 
     // --- Wall collision and clamp ---
     const float safeX = physSample.innerRadius * 1.28f;
@@ -914,6 +894,11 @@ void GameScene::showDiagnostics(const QString &text)
 {
     m_diagText  = text;
     m_diagTimer = 10.f;
+}
+
+void GameScene::restartRun()
+{
+    startGame();
 }
 
 QString GameScene::attractOverlayText() const

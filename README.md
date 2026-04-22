@@ -1,6 +1,6 @@
 # Cuarzito Pre-Show Game
 
-A short arcade pre-show minigame for the **Cuarzito** cyber-theatre experience. It is built in **C++ / Qt** for Windows and intended to run on a large monitor or TV with keyboard fallback, XInput support, and optional SDL2 controller support for DualSense.
+A short arcade pre-show minigame for the **Cuarzito** cyber-theatre experience. It is built in **C++ / Qt** for Windows and intended to run on a large monitor or TV with keyboard fallback, XInput support, and optional SDL3 controller support for DualSense.
 
 The game launches fullscreen by default for event use. Press `F11` to toggle fullscreen/windowed mode during development.
 
@@ -15,27 +15,31 @@ The repository currently contains a playable Qt prototype with an OpenGL-ready w
 - `QPainter` rendering on top of the OpenGL widget.
 - Fixed 1280x720 gameplay canvas.
 - Attract, intro, countdown, playing, game-over, and high-score entry states.
-- Keyboard input: arrows/WASD, Space/Enter, Escape.
+- Keyboard input: arrows/WASD, Space/Enter, Shift/Ctrl, R, Escape, F11.
 - Pseudo-3D projection using a moving vanishing point.
 - Four-direction player movement inside the tunnel.
 - Four persistent chase gems, score popups, burst effects, and basic HUD.
 - Chase-game infrastructure around a persistent tunnel path and world `z` positions.
 - Procedural placeholder Cuarzito drawn with `QPainter`.
-- Dedicated `CaveRenderer` with a QPainter-based faceted cave/space background.
+- Dedicated `CaveRenderer` with a QPainter-based streaming faceted tunnel.
+- Track data loaded from `resources/tracks/first_tunnel.json` through Qt resources.
+- Fullscreen uses cover scaling so ultrawide screens are filled instead of letterboxed.
+- Cuarzito is currently drawn without a persistent aura to preserve tunnel visibility.
 
 The prototype proves the core loop works. The current cave renderer is intentionally isolated so it can later be upgraded internally to GLSL without changing gameplay code.
 
-## Resume Note
+## Current Resume Note
 
-Stopped after a successful compile, but the current visual result does **not** yet match the intended tunnel feel. The highest-priority next task is not more gameplay logic: it is getting the **walls, floor, and ceiling of the cave/tunnel to visibly move past the player**.
+Stopped after a working iteration on track loading, curve inertia, fullscreen ultrawide scaling, Cuarzito visibility, and near-camera tunnel coverage.
 
-For the next session, focus on `CaveRenderer` first:
+The tunnel now streams past the camera and fills ultrawide fullscreen better than before, but the next phase is still visual/game-feel tuning. Current issues to resume from:
 
-- Build a tunnel renderer where multiple cave rings/segments move toward the camera based on `worldSpeed`.
-- Make walls, ceiling, and floor read as actual passing surfaces, not only a static faceted opening or dark cap.
-- Keep the gameplay view enclosed during play; space/the exit belongs mostly to the attract/intro screen.
-- Use `TunnelPath` as the source of curve/turn information, but it is acceptable to simplify the gameplay temporarily if that helps prove the tunnel motion.
-- Do not spend time on the 3D labyrinth idea, DualSense, high-score polish, or intro animation until the tunnel traversal feels right.
+- Improve what is visible at the far end of the tunnel.
+- Make turns much more visible on walls, ceiling, and floor.
+- Make curve inertia stronger and more readable.
+- Restore/fix the mini-map, which is currently not visible after the ultrawide/fullscreen changes.
+- Add stronger acceleration/braking feedback.
+- Build a track editor for the JSON tunnel format.
 
 ## Visual References
 
@@ -59,11 +63,11 @@ The game cave should not be photorealistic. It should be stage-readable, dark, a
 
 Reference for the player character:
 
-- Small floating dark hooded figure.
+- Small floating dark hooded figure, drawn without a persistent aura during gameplay for tunnel visibility.
 - Compact black cloak silhouette.
 - No visible legs.
 - One horizontal neon green visor/eye slit.
-- Blue electric aura.
+- Blue electric aura in reference art, but gameplay currently omits the persistent aura for visibility.
 - Reads instantly at small sizes.
 
 During normal gameplay, Cuarzito is mostly seen from behind, flying away from the camera. The green visor should not be visible as a full front-facing line in the default rear view. It can appear as a brief side glimpse while moving sideways, or in simple start, pickup, and game-over turn/spin animations. The character should stay simple and iconic; the rear silhouette and blue aura matter more than fine detail.
@@ -86,7 +90,7 @@ Presentation target:
 
 - The attract/intro screen can show the cave mouth opening into space, with the four stones floating in the distance.
 - When the chase begins, the gems and Cuarzito enter the tunnel.
-- During gameplay, the player should feel enclosed inside the tunnel; the far space exit should usually not be visible.
+- During gameplay, the player should feel enclosed inside the tunnel, but the tunnel ahead must remain visible enough to predict turns.
 - The 3D effect should come primarily from moving cave walls, ceiling, and floor, not from orange particles.
 - Orange particles are removed for now and can return later only if they support readability.
 
@@ -153,6 +157,12 @@ preshow-game/
 ├── CMakeLists.txt
 ├── README.md
 ├── CLAUDE.md
+├── docs/
+│   └── track-format.md
+├── resources/
+│   ├── resources.qrc
+│   └── tracks/
+│       └── first_tunnel.json
 ├── cuarzito_preshow_game_design.md
 ├── cave.png
 ├── cuarzito.png
@@ -189,6 +199,8 @@ src/
 - [x] Define the world model around `z`, speed, tunnel path, and four target gems.
 - [x] Add `TunnelPath` as the source of tunnel center/radius samples by `z`.
 - [x] Sharpen the first tunnel path model and add a turn-occlusion signal for hiding the far opening.
+- [x] Load the first segment-based tunnel from a Qt resource JSON file.
+- [x] Tune first tunnel to 600-unit straights, 400-unit turns, and 45-degree bends.
 - [x] Add first chase movement pass: `z`, speed, acceleration, braking, and local tunnel offset.
 - [x] Remove old survival movement assumptions from remaining obstacle/collectible code.
 - [x] Replace random collectible spawning with four persistent flying gems.
@@ -268,6 +280,22 @@ src/
 - [x] Fullscreen/event mode toggle with F11.
 - Reliable startup with no missing runtime assets.
 
+### 8. Next Gameplay And Visual Pass
+
+- [ ] Improve what can be seen at the end of the tunnel so the player can read the route without losing the enclosed cave feeling.
+- [ ] Make left/right/up/down turns visible directly on the walls, ceiling, and floor; current turns are not pronounced enough.
+- [ ] Increase curve inertia/kinetic energy so high-speed turns push Cuarzito much harder toward the outside wall.
+- [ ] Add stronger acceleration and braking feel: speed lines, tunnel pulse, FOV/projection response, engine/air sound, or equivalent feedback.
+- [ ] Restore/fix the mini-map; it has disappeared or become hidden after recent fullscreen/render changes.
+- [ ] Build a GUI tunnel editor for `resources/tracks/first_tunnel.json`.
+- [ ] Rebalance speeds so Cuarzito cannot trivially overtake gems; he may need to brake or manage distance to let gems pass/settle ahead.
+- [ ] On game end, make Cuarzito exit the cave into the stars/space instead of only stopping in the tunnel/game-over overlay.
+- [ ] Add obstacles inside the tunnel.
+- [ ] Improve the tunnel appearance: richer facets, better material contrast, more readable depth, and stronger cave identity.
+- [ ] Make crashes much more obvious with stronger visual, motion, and audio feedback.
+- [ ] Make vertical motion obvious when Cuarzito goes up or down.
+- [ ] Add proper sound and music beyond the current generated cue tones/ambient loop.
+
 ## Controls
 
 | Action | Keyboard now | Gamepad target |
@@ -276,6 +304,7 @@ src/
 | Accelerate / Start / Confirm | Space / Enter | A / R2 / Start |
 | Brake | Shift / Ctrl | B / L2 target |
 | Cancel | Escape | B / Back |
+| Restart run | R | Optional |
 | Fullscreen toggle | F11 | Optional |
 | Quit development build | Escape | Optional |
 

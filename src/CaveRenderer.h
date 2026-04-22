@@ -43,6 +43,7 @@ private:
 
     static QList<QPointF> caveRing(const QPointF &vp, float halfW, float halfH,
                                    float phase, float roughness);
+    static QList<QPointF> screenCoverRing(const QPointF &vp, const QSizeF &logicalSize);
     static QPainterPath polygonPath(const QList<QPointF> &points);
 
     QList<Star> m_stars;

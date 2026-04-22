@@ -455,6 +455,7 @@ bool InputManager::hasActionForKey(Qt::Key key)
     case Qt::Key_Shift:
     case Qt::Key_Control:
     case Qt::Key_Escape:
+    case Qt::Key_R:
     case Qt::Key_F11:
         return true;
     default:
@@ -486,6 +487,8 @@ QSet<Action> InputManager::actionsForKey(Qt::Key key)
         return {Action::Brake};
     case Qt::Key_Escape:
         return {Action::Cancel};
+    case Qt::Key_R:
+        return {Action::Restart};
     case Qt::Key_F11:
         return {Action::Fullscreen};
     default:

@@ -6,7 +6,7 @@ Context and working instructions for AI-assisted development on this project.
 
 This is a short arcade pre-show game for the Cuarzito cyber-theatre experience.
 
-The player controls **Cuarzito**, a small dark hooded figure with a neon green visor and blue aura, flying through a cosmic mineral cave. The design is pivoting from the original obstacle-dodge prototype into a chase game: Cuarzito pursues four flying gems through a winding tunnel before time runs out.
+The player controls **Cuarzito**, a small dark hooded figure with a neon green visor, flying through a cosmic mineral cave. The design is pivoting from the original obstacle-dodge prototype into a chase game: Cuarzito pursues four flying gems through a winding tunnel before time runs out.
 
 Primary requirements:
 
@@ -38,14 +38,18 @@ Implemented now:
 - `QTimer` game loop in `GameWidget`.
 - `QPainter` drawing on the OpenGL widget.
 - Attract, Intro, Countdown, Playing, GameOver, and HighScoreEntry states.
-- Keyboard, XInput, and optional SDL2 controller input through `InputManager`.
+- Keyboard, XInput, and optional SDL3 controller input through `InputManager`.
 - Pseudo-3D projection using a moving vanishing point.
 - Four-direction movement inside tunnel bounds.
 - Four persistent chase gems.
 - Chase redesign in progress around world `z`, tunnel path samples, acceleration/braking, and timer-based target captures.
 - Scoring, HUD, score popups, burst effects, stars.
 - Procedural placeholder Cuarzito.
-- Dedicated `CaveRenderer` with a QPainter-based faceted cave/space background.
+- Dedicated `CaveRenderer` with a QPainter-based streaming faceted tunnel.
+- Track data loaded from `resources/tracks/first_tunnel.json` through Qt resources.
+- R restarts the current run immediately for testing.
+- Fullscreen uses cover scaling so ultrawide displays are filled instead of letterboxed.
+- Cuarzito's persistent aura is currently disabled for tunnel visibility.
 
 Important files:
 
@@ -61,7 +65,7 @@ Important files:
 | `src/InputManager.*` | Maps keyboard, XInput, and optional SDL2 controller input to abstract actions. |
 | `CMakeLists.txt` | Qt Widgets plus OpenGL/OpenGLWidgets build. |
 
-The tunnel traversal now feels convincing. Walls, floor, and ceiling fill the screen and stream past the camera as Cuarzito moves forward.
+The tunnel traversal is working and the walls, floor, and ceiling stream past the camera. The current priority is improving readability and game feel: the route ahead, turns, acceleration/braking, crashes, vertical motion, and gem pacing still need iteration.
 
 ## Tunnel Renderer — How It Works
 
@@ -69,9 +73,10 @@ The tunnel traversal now feels convincing. Walls, floor, and ceiling fill the sc
 
 - 22 cross-section rings are placed at world-z intervals of 80 units ahead of the camera.
 - Each ring's projected screen size is `TUNNEL_R * FOCAL / relZ` (155 × 400 / depth).
-- Ring spacing of 80 guarantees that `rings[0]` always projects to ≥ 775px half-width, which exceeds the 640px screen half-width — so the walls always fill the screen with no black gap.
+- A synthetic camera-plane ring is prepended so the nearest wall band extends past the viewport as rings cross the camera.
 - Each ring's irregular cave-wall shape is keyed to its **absolute world-z** (`phase = worldZ * 0.015 + time * 0.03`), so the same cave geometry looks consistent as you approach it.
 - Facet bands between adjacent rings are drawn far-to-near (painter's algorithm). The nearest band's outer ring extends off-screen; Qt clips it.
+- In enclosed gameplay mode, a full-canvas dark rock backing layer is painted behind the facets as a defensive fallback against near-plane gaps.
 - `frame.playerZ` is `m_player.z` during gameplay and a gentle 80 units/s drift in all other states.
 - `m_tunnelZ` in `GameScene` carries this value across all states and is exposed as `tunnelZ()`.
 
@@ -84,7 +89,7 @@ Key constants in `CaveRenderer::drawCave()`:
 | `RING_SPACING` | 80 | World units between rings; keep ≤ 97 so rings[0] always fills the screen |
 | `NUM_RINGS` | 22 | Rings ahead of camera |
 | `NEAR_CLIP` | 1 | Only drops rings exactly at the camera plane |
-| `MASK_CAP` | 1200 | Caps the OddEvenFill mask polygon; must exceed screen half-width (640) |
+| synthetic camera ring | screen-cover polygon | Prevents near-camera prism gaps when rings cross the camera plane |
 
 ## Visual References
 
@@ -111,10 +116,10 @@ Player direction:
 - Small floating hooded figure.
 - Black/dark cloak with compact silhouette.
 - One neon green horizontal visor.
-- Blue electric aura.
+- Blue electric aura in reference art. Current gameplay omits the persistent aura so the tunnel and wall position stay readable.
 - No visual clutter.
 
-During normal gameplay, Cuarzito is facing away from the camera. Do not draw the full green visor in the default rear-view pose. The visor may be shown only as a small side glimpse during lateral movement, or in explicit start, pickup, and game-over turn/spin animations. At game size, the default pose should read as: dark hooded back silhouette + blue aura.
+During normal gameplay, Cuarzito is facing away from the camera. Do not draw the full green visor in the default rear-view pose. The visor may be shown only as a small side glimpse during lateral movement, or in explicit start, pickup, and game-over turn/spin animations. At game size, the default pose should read as a dark hooded back silhouette without a persistent aura.
 
 ## Chase Game Design
 
@@ -127,8 +132,8 @@ Target loop:
 - The cave path bends in x/y as `z` increases, so the tunnel itself creates the 3D challenge.
 - The tunnel uses discrete segments (straights, curves, inclines, declines) so the player can read what is coming and prepare. Continuous winding is avoided.
 - Centripetal force is simulated: at higher speeds, curves push Cuarzito toward the outer wall. Skilled players brake into sharp corners, accelerate on straights — like a racing game.
-- The tunnel should use sharp enough curves and steep enough rises/drops that the far exit is sometimes partly or fully hidden during turns.
-- Presentation target: the intro can show the cave mouth and space behind it, with four stones floating before they enter the tunnel. Gameplay should then feel enclosed inside the tunnel, with no persistent far exit.
+- The tunnel should use sharp enough curves and steep enough rises/drops that the route is visible on the walls, ceiling, and floor before the player reaches it.
+- Presentation target: the intro can show the cave mouth and space behind it, with four stones floating before they enter the tunnel. Gameplay should feel enclosed inside the tunnel, while still showing enough distance ahead to predict turns.
 - Orange sparks are intentionally removed for now. The 3D feeling should come from moving walls, ceiling, and floor.
 - Parked future idea: a true 3D labyrinth chase with branching tunnels and loops. Feasible later once the track editor is built.
 - Wall, floor, and ceiling collisions reduce Cuarzito's speed and break clean-flight bonuses.
@@ -141,6 +146,7 @@ Target controls:
 - Steer with arrows/WASD, left stick, or D-pad.
 - Accelerate with Space/Enter now, later A/R2 on gamepad.
 - Brake with Shift/Ctrl, later B/L2 on gamepad.
+- Restart the current run immediately with R for testing.
 
 Core model:
 
@@ -163,21 +169,25 @@ Gem:
 
 ## Track System
 
-`TunnelPath` is segment-based. The track is defined as a static table of segments in `TunnelPath.cpp` — edit that table to change the course. Each segment has:
+`TunnelPath` is segment-based. The first track is loaded from `:/tracks/first_tunnel.json`, embedded from `resources/tracks/first_tunnel.json` through `resources/resources.qrc`. See `docs/track-format.md` for the editable data format.
+
+Each segment has:
 
 | Field | Meaning |
 |---|---|
-| `length` | World units along the z axis |
-| `curvH` | Horizontal curvature (radians/unit). Positive = curves right. |
-| `curvV` | Vertical curvature (radians/unit). Positive = curves up. |
+| `type` | `straight`, `left`, `right`, `uphill`, or `downhill`. |
+| `length` | World units along the tunnel path. At speed `200`, current straights are `600` units/3 seconds and turns are `400` units/2 seconds. |
+| `angleDegrees` | Total segment bend. Required for non-straight segments. The current turn angle is `45`. |
 
-Keyframe states (position, heading) are precomputed at each segment boundary so `sample(z)` is O(log n). The path is deterministic and identical every run.
+The loader converts `angleDegrees / length` into curvature, then precomputes keyframe states at each segment boundary so `sample(z)` is O(log n). The path is deterministic and identical every run. If the Qt resource cannot be read, `TunnelPath` falls back to a small built-in straight/left/straight/right pattern so event builds remain playable.
 
-**Editing the track:** change the segment table in `TunnelPath.cpp`. A future external visual editor will read/write the same table format. Loops are possible by using large `curvV` values (full vertical loop = `curvV = 2π / length`).
+**Editing the track:** change `resources/tracks/first_tunnel.json`. A future external visual editor should read/write the same table format. Loops are possible later by using large vertical angles over a segment.
 
-**Centripetal physics constant:** `CENTRIPETAL_K = 0.08f` in `GameScene.cpp`. Increase to make curves harder, decrease to make them more forgiving.
+**Curve inertia constant:** `CURVE_INERTIA_K = 1.60f` in `GameScene.cpp`. Increase to make curves harder, decrease to make them more forgiving. The sign is intentionally opposite the path curvature: a left curve pushes Cuarzito toward the right/outside wall, and a right curve pushes him toward the left/outside wall.
 
 **Gem balance targets:** gems run at ~155 units/s, player base speed is 235. Relative catch-up speed = 80 units/s — clearly catchable on a straight, but curves and wall contacts make it challenging.
+
+Current concern: this balance may let Cuarzito overtake gems too easily. Revisit gem speeds, starting distances, player speed cap, and braking requirements so chasing and spacing feel intentional.
 
 ## Design Rules
 
@@ -364,9 +374,10 @@ enum class GameState {
 
 ### Phase H - Track and Gameplay Overhaul
 
-- [ ] Replace sine-wave `TunnelPath` with segment-based track (straight/curve/incline/decline).
-- [ ] Expose `curvatureH` and `curvatureV` in `TunnelPath::Sample`.
-- [ ] Add centripetal force physics: curves push Cuarzito toward the outer wall proportional to speed².
+- [x] Replace sine-wave `TunnelPath` with segment-based track (straight/curve/incline/decline).
+- [x] Expose `curvatureH` and `curvatureV` in `TunnelPath::Sample`.
+- [x] Add centripetal force physics: curves push Cuarzito toward the outer wall proportional to speed².
+- [x] Load the first tunnel from a Qt resource JSON file instead of hardcoding track values.
 - [ ] Rebalance gem speeds and starting distances so gems are clearly catchable.
 - [ ] Add 3D mini-map (bottom-right HUD): shows tunnel path ahead, Cuarzito, and gem positions.
 - [ ] Design and iterate on a first full track (~4000 world units, 8–10 segments).
@@ -375,9 +386,22 @@ enum class GameState {
 
 ## Immediate Next Step
 
-Implement Phase H items 1–5 (segment track, centripetal physics, gem balance, mini-map) as a cohesive gameplay overhaul.
+Resume with the next gameplay and visual pass:
+
+- Improve what can be seen at the end of the tunnel without turning gameplay into open space.
+- Make turns much more visible on walls, ceiling, and floor.
+- Increase curve inertia/kinetic energy so high-speed turns strongly push Cuarzito toward the outside wall.
+- Add a clear feeling of acceleration and braking through visuals and audio.
+- Restore/fix the mini-map, which has disappeared or is hidden after recent fullscreen/render changes.
+- Build a GUI editor for the tunnel JSON format.
+- Rebalance speeds so Cuarzito cannot trivially overtake gems; he may need to brake or manage spacing.
+- Make Cuarzito exit into the stars/space when the game ends.
+- Add obstacles inside the tunnel.
+- Improve the tunnel appearance: richer facets, better depth, stronger cave identity.
+- Make crashes much more obvious.
+- Make up/down movement obvious.
+- Add proper sound and music beyond the current generated tones/ambient loop.
 
 Remaining from earlier phases:
 - Readability test at event screen (needs physical screen).
-- Restart flow through countdown (Phase E).
 - Dead zone / sensitivity tuning (Phase F).

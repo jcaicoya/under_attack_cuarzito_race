@@ -1,70 +1,147 @@
 #include "TunnelPath.h"
 
+#include <QFile>
+#include <QIODevice>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QLoggingCategory>
 #include <QtMath>
 #include <cmath>
 
-// ---------------------------------------------------------------------------
-// Track definition
-//
-// Edit this table to change the course.  Each row is one segment:
-//   { length,  curvH,    curvV   }
-//
-// length : world units along the z axis
-// curvH  : horizontal curvature, radians/unit  (+ = curves right)
-// curvV  : vertical curvature,   radians/unit  (+ = curves up)
-//
-// Design rules:
-//   - Alternate S-curves so the heading stays roughly forward.
-//   - Keep |curvH/V * length| (total angle change) ≤ ~1.4 rad per segment
-//     so the turn is never invisible from the entrance.
-//   - A full vertical loop needs curvV = 2π / length (future feature).
-// ---------------------------------------------------------------------------
-static const struct { float len, cH, cV; } k_track[] = {
-//  length   curvH     curvV
-  { 500.f,  0.000f,  0.000f },  //  0: straight approach
-  { 300.f,  0.004f,  0.000f },  //  1: gentle right
-  { 300.f, -0.004f,  0.000f },  //  2: left — straightens heading
-  { 450.f,  0.000f,  0.000f },  //  3: straight
-  { 220.f,  0.000f,  0.004f },  //  4: uphill
-  { 220.f,  0.000f, -0.004f },  //  5: downhill — straightens heading
-  { 400.f,  0.000f,  0.000f },  //  6: straight
-  { 260.f, -0.005f,  0.000f },  //  7: medium left
-  { 260.f,  0.005f,  0.000f },  //  8: right — straightens
-  { 350.f,  0.000f,  0.000f },  //  9: straight
-  { 200.f,  0.006f,  0.003f },  // 10: right + uphill
-  { 200.f, -0.006f, -0.003f },  // 11: straightens both axes
-  { 400.f,  0.000f,  0.000f },  // 12: straight
-  { 240.f, -0.007f,  0.000f },  // 13: sharp left
-  { 240.f,  0.007f,  0.000f },  // 14: sharp right — straightens
-  { 500.f,  0.000f,  0.000f },  // 15: long straight to finish
-};
-static constexpr int k_segCount = static_cast<int>(sizeof(k_track) / sizeof(k_track[0]));
+Q_LOGGING_CATEGORY(trackLog, "cuarzito.track")
+
+namespace {
+constexpr char kTrackResource[] = ":/tracks/first_tunnel.json";
+constexpr float kDefaultSegmentLength = 200.f;
+constexpr float kDefaultTurnAngleDegrees = 30.f;
+
+float curvatureFor(float angleDegrees, float length)
+{
+    if (length <= 0.f)
+        return 0.f;
+    return qDegreesToRadians(angleDegrees) / length;
+}
+}
 
 // ---------------------------------------------------------------------------
-// Constructor — precompute keyframe states at each segment boundary
+// Constructor — load the resource track, then precompute segment boundaries
 // ---------------------------------------------------------------------------
 TunnelPath::TunnelPath()
 {
-    m_keyframes.reserve(k_segCount);
+    QVector<Segment> segments = loadTrack(QString::fromLatin1(kTrackResource));
+    if (segments.isEmpty()) {
+        qCWarning(trackLog) << "Using fallback tunnel track";
+        segments = fallbackTrack();
+    }
+
+    precompute(segments);
+}
+
+QVector<TunnelPath::Segment> TunnelPath::loadTrack(const QString &resourcePath) const
+{
+    QFile file(resourcePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        qCWarning(trackLog) << "Could not open track resource" << resourcePath << file.errorString();
+        return {};
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        qCWarning(trackLog) << "Invalid track JSON" << resourcePath << parseError.errorString();
+        return {};
+    }
+
+    const QJsonObject root = doc.object();
+    const QJsonArray segmentArray = root.value(QStringLiteral("segments")).toArray();
+    if (segmentArray.isEmpty()) {
+        qCWarning(trackLog) << "Track has no segments" << resourcePath;
+        return {};
+    }
+
+    QVector<Segment> segments;
+    segments.reserve(segmentArray.size());
+
+    for (int i = 0; i < segmentArray.size(); ++i) {
+        const QJsonObject obj = segmentArray.at(i).toObject();
+        const QString type = obj.value(QStringLiteral("type")).toString().toLower();
+        const float length = static_cast<float>(
+            obj.value(QStringLiteral("length")).toDouble(kDefaultSegmentLength));
+        const bool isStraight = type == QStringLiteral("straight");
+        const float defaultAngle = isStraight ? 0.f : kDefaultTurnAngleDegrees;
+        const float angle = static_cast<float>(
+            obj.value(QStringLiteral("angleDegrees")).toDouble(defaultAngle));
+
+        if (length <= 0.f) {
+            qCWarning(trackLog) << "Skipping segment with invalid length" << i << length;
+            continue;
+        }
+
+        Segment segment;
+        segment.length = length;
+
+        if (isStraight) {
+            // No curvature.
+        } else if (type == QStringLiteral("left")) {
+            segment.curvH = -curvatureFor(angle, length);
+        } else if (type == QStringLiteral("right")) {
+            segment.curvH = curvatureFor(angle, length);
+        } else if (type == QStringLiteral("uphill")) {
+            segment.curvV = curvatureFor(angle, length);
+        } else if (type == QStringLiteral("downhill")) {
+            segment.curvV = -curvatureFor(angle, length);
+        } else {
+            qCWarning(trackLog) << "Skipping segment with unknown type" << i << type;
+            continue;
+        }
+
+        segments.append(segment);
+    }
+
+    return segments;
+}
+
+QVector<TunnelPath::Segment> TunnelPath::fallbackTrack() const
+{
+    const float turn = curvatureFor(kDefaultTurnAngleDegrees, kDefaultSegmentLength);
+    return {
+        {kDefaultSegmentLength, 0.f, 0.f},
+        {kDefaultSegmentLength, -turn, 0.f},
+        {kDefaultSegmentLength, 0.f, 0.f},
+        {kDefaultSegmentLength, turn, 0.f},
+        {kDefaultSegmentLength, 0.f, 0.f},
+        {kDefaultSegmentLength, -turn, 0.f},
+        {kDefaultSegmentLength, 0.f, 0.f},
+        {kDefaultSegmentLength, turn, 0.f},
+        {kDefaultSegmentLength, 0.f, 0.f},
+    };
+}
+
+void TunnelPath::precompute(const QVector<Segment> &segments)
+{
+    m_keyframes.clear();
+    m_keyframes.reserve(segments.size());
 
     float z = 0.f, x = 0.f, y = 0.f, aH = 0.f, aV = 0.f;
 
-    for (int i = 0; i < k_segCount; ++i) {
+    for (const Segment &segment : segments) {
         Keyframe kf;
         kf.zStart = z;
         kf.x      = x;
         kf.y      = y;
         kf.angleH = aH;
         kf.angleV = aV;
-        kf.curvH  = k_track[i].cH;
-        kf.curvV  = k_track[i].cV;
-        kf.length = k_track[i].len;
+        kf.curvH  = segment.curvH;
+        kf.curvV  = segment.curvV;
+        kf.length = segment.length;
         m_keyframes.append(kf);
 
         // Advance state to end of segment using exact arc integration
-        const float L  = k_track[i].len;
-        const float cH = k_track[i].cH;
-        const float cV = k_track[i].cV;
+        const float L  = segment.length;
+        const float cH = segment.curvH;
+        const float cV = segment.curvV;
 
         if (std::abs(cH) > 1e-6f)
             x += (std::sin(aH + cH * L) - std::sin(aH)) / cH;

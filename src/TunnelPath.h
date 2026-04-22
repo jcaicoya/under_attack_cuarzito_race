@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QPointF>
+#include <QString>
 #include <QVector>
 
 class TunnelPath {
@@ -15,7 +16,7 @@ public:
         float curvatureV = 0.f;   // vertical curvature at this z
     };
 
-    TunnelPath();   // precomputes keyframes from the segment table
+    TunnelPath();   // loads the resource track and precomputes keyframes
 
     Sample  sample(float z) const;
     QPointF gemOffset(int gemIndex, float z) const;
@@ -34,6 +35,16 @@ private:
         float curvV;
         float length;
     };
+
+    struct Segment {
+        float length = 200.f;
+        float curvH = 0.f;
+        float curvV = 0.f;
+    };
+
+    QVector<Segment> loadTrack(const QString &resourcePath) const;
+    QVector<Segment> fallbackTrack() const;
+    void precompute(const QVector<Segment> &segments);
 
     QPointF centerAt(float z) const;
     float   radiusAt(float z) const;

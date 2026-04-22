@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file>tracks/first_tunnel.json</file>
+    </qresource>
+</RCC>

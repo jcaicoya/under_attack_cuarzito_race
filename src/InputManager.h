@@ -11,6 +11,7 @@ enum class Action {
     Brake,
     Confirm,
     Cancel,
+    Restart,
     Fullscreen,
 };
 

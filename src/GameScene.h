@@ -29,6 +29,7 @@ public:
     float turnOcclusion() const;
     CaveRenderer::Mode caveMode() const;
     void showDiagnostics(const QString &text);
+    void restartRun();
 
 private:
     // ---------------------------------------------------------------

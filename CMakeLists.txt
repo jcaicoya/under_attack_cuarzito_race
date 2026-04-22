@@ -27,6 +27,7 @@ add_executable(cuarzito-race
     src/AudioManager.cpp
     src/HighScoreManager.cpp
     src/InputManager.cpp
+    resources/resources.qrc
 )
 
 target_include_directories(cuarzito-race PRIVATE src)

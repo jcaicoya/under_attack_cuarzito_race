@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "name": "first_tunnel",
+  "units": {
+    "speed": 200,
+    "secondsPerSegment": 1,
+    "straightDurationSeconds": 3,
+    "turnDurationSeconds": 2,
+    "straightLength": 600,
+    "turnLength": 400,
+    "turnAngleDegrees": 45
+  },
+  "segments": [
+    { "type": "straight", "length": 600 },
+    { "type": "left", "length": 400, "angleDegrees": 45 },
+    { "type": "straight", "length": 600 },
+    { "type": "right", "length": 400, "angleDegrees": 45 },
+    { "type": "straight", "length": 600 },
+    { "type": "left", "length": 400, "angleDegrees": 45 },
+    { "type": "straight", "length": 600 },
+    { "type": "right", "length": 400, "angleDegrees": 45 },
+    { "type": "straight", "length": 600 },
+    { "type": "left", "length": 400, "angleDegrees": 45 },
+    { "type": "straight", "length": 600 },
+    { "type": "right", "length": 400, "angleDegrees": 45 },
+    { "type": "straight", "length": 600 },
+    { "type": "left", "length": 400, "angleDegrees": 45 },
+    { "type": "straight", "length": 600 },
+    { "type": "right", "length": 400, "angleDegrees": 45 },
+    { "type": "straight", "length": 600 }
+  ]
+}
