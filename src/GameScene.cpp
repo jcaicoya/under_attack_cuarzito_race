@@ -575,6 +575,9 @@ void GameScene::updateChasePhysics(float dt)
     // --- Centripetal force BEFORE wall clamp so the clamp can catch it ---
     // Pushes Cuarzito toward the outer wall on curves (racing physics).
     // Tuning: CENTRIPETAL_K — raise to make curves harder, lower to ease them.
+    // Centripetal force: outer-wall drift proportional to curvature × speed².
+    // Sign is positive: right curve (curvH>0) → offX grows → player drifts
+    // toward the right (outer) wall relative to VP. Player must steer left.
     constexpr float CENTRIPETAL_K = 0.04f;
     const TunnelPath::Sample physSample = m_tunnelPath.sample(m_player.z);
     m_player.offX += physSample.curvatureH * m_player.speed * m_player.speed * CENTRIPETAL_K * dt;
@@ -607,10 +610,14 @@ void GameScene::updateChasePhysics(float dt)
     m_player.z   += m_player.speed * dt;
     m_worldSpeed  = m_player.speed;
 
-    // --- VP tracks the tunnel centre ahead ---
-    const TunnelPath::Sample lookAhead = m_tunnelPath.sample(m_player.z + 230.f);
-    const float targetVpX = CX + lookAhead.center.x() * 0.88f;
-    const float targetVpY = CY + lookAhead.center.y() * 0.74f;
+    // --- VP tracks tunnel direction ahead (relative, not absolute world pos) ---
+    // Using lookAhead - current keeps VP bounded regardless of how far the
+    // tunnel has drifted in world space across many segments.
+    const QPointF currentCenter  = m_tunnelPath.sample(m_player.z).center;
+    const QPointF lookAheadCenter = m_tunnelPath.sample(m_player.z + 230.f).center;
+    const QPointF relDir = lookAheadCenter - currentCenter;
+    const float targetVpX = CX + relDir.x() * 0.88f;
+    const float targetVpY = CY + relDir.y() * 0.74f;
     m_vpX += (targetVpX - m_vpX) * qMin(1.f, dt * 4.4f);
     m_vpY += (targetVpY - m_vpY) * qMin(1.f, dt * 4.4f);
 
