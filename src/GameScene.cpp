@@ -397,6 +397,8 @@ void GameScene::update(float dt)
         m_revealTimer = qMax(0.f, m_revealTimer - dt);
     if (m_impactFlash > 0.f)
         m_impactFlash = qMax(0.f, m_impactFlash - dt * 2.8f);
+    if (m_diagTimer > 0.f)
+        m_diagTimer = qMax(0.f, m_diagTimer - dt);
 
     for (auto &burst : m_bursts) {
         burst.sx += burst.vx * dt;
@@ -881,6 +883,12 @@ void GameScene::setOverlay(const QString &text)
     m_overlayText = text;
 }
 
+void GameScene::showDiagnostics(const QString &text)
+{
+    m_diagText  = text;
+    m_diagTimer = 10.f;
+}
+
 QString GameScene::attractOverlayText() const
 {
     return "CUARZITO\n\nPRESS SPACE TO START";
@@ -950,6 +958,31 @@ void GameScene::drawHUD(QPainter *painter) const
         drawTopScores(painter, SCENE_W - 360.f, 76.f, 5);
     else if (m_state == GameState::GameOver)
         drawTopScores(painter, SCENE_W - 360.f, 76.f, 5);
+
+    // Diagnostics overlay (F1) — shown for 10 seconds, fades last 2 seconds
+    if (m_diagTimer > 0.f && !m_diagText.isEmpty()) {
+        const float alpha = qBound(0.f, m_diagTimer / 2.f, 1.f);
+        const QStringList lines = m_diagText.split('\n');
+        const float lineH = 18.f;
+        const float padX  = 12.f, padY = 10.f;
+        const float boxW  = 560.f;
+        const float boxH  = padY * 2.f + lines.size() * lineH;
+
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(0, 0, 0, static_cast<int>(180 * alpha)));
+        painter->drawRoundedRect(QRectF(8.f, 8.f, boxW, boxH), 6.f, 6.f);
+
+        painter->setFont(QFont("Courier New", 11));
+        for (int i = 0; i < lines.size(); ++i) {
+            const QString &line = lines[i];
+            const bool isHeader = line.startsWith("===");
+            painter->setPen(QColor(isHeader ? 100 : 200,
+                                   isHeader ? 255 : 240,
+                                   isHeader ? 200 : 200,
+                                   static_cast<int>(220 * alpha)));
+            painter->drawText(QPointF(8.f + padX, 8.f + padY + (i + 1) * lineH), line);
+        }
+    }
 
     painter->restore();
 }

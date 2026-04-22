@@ -66,4 +66,16 @@ if (WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
                 "${QT_INSTALL_PATH}/bin/Qt6${QT_LIB}${DEBUG_SUFFIX}.dll"
                 "$<TARGET_FILE_DIR:${PROJECT_NAME}>")
     endforeach (QT_LIB)
+
+    # Third-party runtime DLLs stored in libs/.
+    # SDL3.dll is optional — game falls back gracefully if absent.
+    set(LIBS_DIR "${CMAKE_SOURCE_DIR}/libs")
+    foreach (EXTRA_DLL SDL3.dll)
+        if (EXISTS "${LIBS_DIR}/${EXTRA_DLL}")
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${LIBS_DIR}/${EXTRA_DLL}"
+                    "$<TARGET_FILE_DIR:${PROJECT_NAME}>")
+        endif ()
+    endforeach ()
 endif ()

@@ -17,8 +17,7 @@ Primary requirements:
 - Short, replayable runs of about 20 to 60 seconds.
 - Keyboard fallback always available.
 - Basic XInput gamepad support available on Windows.
-- Optional SDL2 controller backend for DualSense. It loads `SDL2.dll` dynamically at runtime.
-- Open issue: the user's DualSense still did not respond in the game after being confirmed working elsewhere. Keyboard remains the reliable fallback; later work should add diagnostics for SDL load status, detected controller count, GUID, and mapping.
+- SDL3 controller backend for DualSense. Loads `SDL3.dll` dynamically at runtime from the exe directory (deployed via CMake from `libs/SDL3.dll`). DualSense confirmed working.
 
 ## Current Code Reality
 
@@ -261,7 +260,7 @@ The moving vanishing point is a core part of the game feel. Keep the speed cap s
 - [x] Draw first intro screen pass where the cave exit and space are visible before the chase.
 - [x] Make gameplay tunnel feel enclosed, with the far exit usually hidden.
 - [x] Replace the static cave opening with streaming tunnel rings — walls, floor, and ceiling now move convincingly past the camera.
-- [ ] Animate Cuarzito approaching and the stones entering the tunnel during intro.
+- [x] Animate Cuarzito approaching and the stones entering the tunnel during intro.
 
 ### Phase A - Baseline Verification
 
@@ -346,9 +345,7 @@ enum class GameState {
 
 ## Immediate Next Step
 
-Tunnel traversal is working. Next candidates in priority order:
-
-1. **Cuarzito visuals** (Phase D) — improve the hood silhouette, rear-facing default pose, blue aura, and idle bob.
-2. **Intro animation** — animate Cuarzito approaching and the four stones entering the tunnel during the intro state.
-3. **Readability test** — test at 1280×720 and fullscreen on the event screen.
-4. **DualSense diagnostics** — add SDL load status, controller count, GUID, and mapping logs to help diagnose why the DualSense does not respond.
+1. **Readability test** — test at 1280×720 and fullscreen on the event screen; check HUD contrast, text size, and gem visibility from a distance.
+2. **Restart flow** — restart from game over should go through countdown (Phase E item still unchecked).
+3. **Tune dead zone and sensitivity** (Phase F).
+4. **Package for event** — verify all runtime DLLs deploy correctly alongside the exe.

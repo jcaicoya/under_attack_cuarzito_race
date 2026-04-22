@@ -45,6 +45,10 @@ public:
 
     void endFrame();
 
+    // Returns a multi-line diagnostic report: SDL load status, controller
+    // count, names, GUIDs, and XInput status.  Call after updateGamepad().
+    QString gamepadDiagnostics() const;
+
 private:
     static QSet<Action> actionsForKey(Qt::Key key);
     static bool hasActionForKey(Qt::Key key);

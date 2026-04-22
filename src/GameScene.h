@@ -28,6 +28,7 @@ public:
     float tunnelZ() const { return m_tunnelZ; }
     float turnOcclusion() const;
     CaveRenderer::Mode caveMode() const;
+    void showDiagnostics(const QString &text);
 
 private:
     // ---------------------------------------------------------------
@@ -174,4 +175,6 @@ private:
 
     QString m_hudText;
     QString m_overlayText;
+    QString m_diagText;
+    float   m_diagTimer = 0.f;
 };
