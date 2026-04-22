@@ -89,9 +89,39 @@ void GameScene::drawChaseGems(QPainter *painter) const
         const TunnelPath::Sample gemSample = m_tunnelPath.sample(gem->z);
         const QPointF offset = m_tunnelPath.gemOffset(ref.index, gem->z);
         QPointF relativeCenter = gemSample.center - playerSample.center;
-        if (m_state == GameState::Intro || m_state == GameState::Countdown) {
+
+        if (m_state == GameState::Countdown) {
             ahead = 280.f + ref.index * 78.f;
             relativeCenter *= 0.35f;
+        } else if (m_state == GameState::Intro) {
+            // Four gems float in a loose diamond, then dart into the tunnel.
+            constexpr float DART_START_T = 0.58f;
+            // Spread offsets: each gem has a distinct world-space position
+            // relative to the tunnel centre during the showcase phase.
+            static const float spreadX[4] = {-68.f,  60.f, -50.f,  55.f};
+            static const float spreadY[4] = { 16.f, -28.f, -34.f,  24.f};
+
+            if (m_introAnimT < DART_START_T) {
+                // Showcase: gems appear with a staggered fade-in and float bob
+                const float appearDelay = ref.index * 0.08f;
+                const float appear = qBound(0.f,
+                    (m_introAnimT - appearDelay) / 0.14f, 1.f);
+                const float bob = std::sin(m_time * 2.6f + ref.index * 1.57f) * 9.f;
+                ahead          = 220.f + ref.index * 32.f;
+                relativeCenter = QPointF(spreadX[ref.index] * appear,
+                                         spreadY[ref.index] * appear + bob);
+            } else {
+                // Dart: gems accelerate into the tunnel, spread collapses to centre
+                const float dartT    = (m_introAnimT - DART_START_T) / (1.f - DART_START_T);
+                const float dartEase = std::pow(dartT, 1.8f);
+                const float converge = std::pow(dartT, 0.7f);
+                const float bob      = std::sin(m_time * 2.6f + ref.index * 1.57f)
+                                       * 9.f * (1.f - dartT);
+                ahead = 220.f + ref.index * 32.f
+                      + dartEase * (260.f + ref.index * 95.f);
+                relativeCenter = QPointF(spreadX[ref.index] * (1.f - converge),
+                                         spreadY[ref.index] * (1.f - converge) + bob);
+            }
         }
         const float renderZ = qBound(90.f, ahead + 245.f, 980.f);
         const float wx = relativeCenter.x() + offset.x() - m_player.offX * 0.22f;
@@ -135,80 +165,124 @@ void GameScene::drawChaseGems(QPainter *painter) const
 void GameScene::drawPlayer(QPainter *painter) const
 {
     const float cx = playerSX();
-    const float bob = std::sin(m_time * 7.5f) * 2.2f;
-    const float cy = playerSY() + bob;
-    const float lean = playerLean();
+    // Bob: gentle vertical float with a very slight lateral sway for life
+    const float bobY  = std::sin(m_time * 6.8f) * 3.8f;
+    const float bobX  = std::sin(m_time * 4.1f + 1.2f) * 1.4f;
+    const float cy    = playerSY() + bobY;
+    const float lean  = playerLean();
     const float reveal = m_revealDuration > 0.f
         ? qBound(0.f, m_revealTimer / m_revealDuration, 1.f)
         : 0.f;
-    constexpr float W = 50.f, H = 62.f;
+    constexpr float W = 58.f, H = 72.f;
 
-    // Blue electric aura
-    QRadialGradient aura(cx - lean * 2.f, cy + H * 0.05f, W * 1.45f);
-    aura.setColorAt(0.0, QColor(  0,  30, 120,  16));
-    aura.setColorAt(0.45, QColor(  0,  85, 215,  45));
-    aura.setColorAt(0.72, QColor( 20, 175, 230,  34));
-    aura.setColorAt(1.0, QColor(  0,   0,   0,   0));
+    const float ax = cx + bobX - lean * 3.f;   // aura centre drifts with bob/lean
+
+    // -----------------------------------------------------------------------
+    // 1. Outer electric aura — wide, vivid blue fill (the dominant visual)
+    // -----------------------------------------------------------------------
+    QRadialGradient outerAura(ax, cy + H * 0.08f, W * 2.6f);
+    outerAura.setColorAt(0.00, QColor(  0,  50, 200,  0));
+    outerAura.setColorAt(0.28, QColor(  0,  90, 230, 62));
+    outerAura.setColorAt(0.55, QColor( 15, 160, 245, 44));
+    outerAura.setColorAt(0.80, QColor( 30, 200, 255, 22));
+    outerAura.setColorAt(1.00, QColor(  0,   0,   0,  0));
     painter->setPen(Qt::NoPen);
-    painter->setBrush(aura);
-    painter->drawEllipse(QPointF(cx - lean * 2.f, cy + H * 0.05f), W * 1.45f, W * 1.05f);
+    painter->setBrush(outerAura);
+    painter->drawEllipse(QPointF(ax, cy + H * 0.08f), W * 2.6f, W * 1.9f);
 
-    // Rear-view hooded cloak: Cuarzito is flying away from the camera.
+    // Inner concentrated aura — tighter, brighter core
+    QRadialGradient innerAura(ax, cy + H * 0.02f, W * 1.15f);
+    innerAura.setColorAt(0.00, QColor(  0,  60, 200, 18));
+    innerAura.setColorAt(0.35, QColor(  0, 120, 255, 92));
+    innerAura.setColorAt(0.65, QColor( 45, 190, 255, 68));
+    innerAura.setColorAt(1.00, QColor(  0,   0,   0,  0));
+    painter->setBrush(innerAura);
+    painter->drawEllipse(QPointF(ax, cy + H * 0.02f), W * 1.15f, W * 0.88f);
+
+    // -----------------------------------------------------------------------
+    // 2. Cloak — rear-view hooded figure flying away from camera.
+    //    Hood is a rounded dome, cloak fans out and flows below.
+    // -----------------------------------------------------------------------
+    const float hoodPeakX = cx + bobX + lean * 2.f;
+    const float hoodPeakY = cy - H * 0.50f;
+
     QPainterPath cloak;
-    cloak.moveTo(cx + lean * 3.f, cy - H * 0.51f);
-    cloak.cubicTo(cx + W * 0.35f + lean * 5.f, cy - H * 0.47f,
-                  cx + W * 0.55f + lean * 6.f, cy - H * 0.22f,
-                  cx + W * 0.47f + lean * 5.f, cy + H * 0.08f);
-    cloak.cubicTo(cx + W * 0.55f + lean * 3.f, cy + H * 0.32f,
-                  cx + W * 0.38f,              cy + H * 0.48f,
-                  cx + lean * 3.f,             cy + H * 0.52f);
-    cloak.cubicTo(cx - W * 0.38f,              cy + H * 0.48f,
-                  cx - W * 0.55f + lean * 3.f, cy + H * 0.32f,
-                  cx - W * 0.47f + lean * 5.f, cy + H * 0.08f);
-    cloak.cubicTo(cx - W * 0.55f + lean * 6.f, cy - H * 0.22f,
-                  cx - W * 0.35f + lean * 5.f, cy - H * 0.47f,
-                  cx + lean * 3.f,             cy - H * 0.51f);
+    // Hood top — broad rounded dome, not sharply pointed
+    cloak.moveTo(hoodPeakX - W * 0.14f, hoodPeakY);
+    cloak.cubicTo(hoodPeakX - W * 0.04f, hoodPeakY - H * 0.05f,
+                  hoodPeakX + W * 0.04f, hoodPeakY - H * 0.05f,
+                  hoodPeakX + W * 0.14f, hoodPeakY);
+    // Right hood side flares outward to shoulder
+    cloak.cubicTo(cx + W * 0.42f + lean * 5.f, hoodPeakY + H * 0.08f,
+                  cx + W * 0.60f + lean * 6.f, cy - H * 0.16f,
+                  cx + W * 0.52f + lean * 5.f, cy + H * 0.12f);
+    // Right cloak fans outward, then hem
+    cloak.cubicTo(cx + W * 0.60f + lean * 3.f, cy + H * 0.35f,
+                  cx + W * 0.46f,              cy + H * 0.52f,
+                  cx + lean * 3.f,             cy + H * 0.56f);
+    // Left hem mirror
+    cloak.cubicTo(cx - W * 0.46f,              cy + H * 0.52f,
+                  cx - W * 0.60f + lean * 3.f, cy + H * 0.35f,
+                  cx - W * 0.52f + lean * 5.f, cy + H * 0.12f);
+    // Left hood side
+    cloak.cubicTo(cx - W * 0.60f + lean * 6.f, cy - H * 0.16f,
+                  cx - W * 0.42f + lean * 5.f, hoodPeakY + H * 0.08f,
+                  hoodPeakX - W * 0.14f,       hoodPeakY);
     cloak.closeSubpath();
 
-    QRadialGradient bodyGrad(cx - lean * 4.f, cy - H * 0.04f, W * 0.86f);
-    bodyGrad.setColorAt(0.0, QColor(24, 25, 34));
-    bodyGrad.setColorAt(0.45, QColor(10, 10, 18));
-    bodyGrad.setColorAt(1.0, QColor(3, 3, 8));
-
+    // Dark cloak body: near-black with a very faint cool tint for depth
+    QRadialGradient bodyGrad(cx + bobX - lean * 4.f, cy - H * 0.06f, W * 0.92f);
+    bodyGrad.setColorAt(0.00, QColor(22, 22, 32));
+    bodyGrad.setColorAt(0.45, QColor( 9,  9, 17));
+    bodyGrad.setColorAt(1.00, QColor( 2,  2,  6));
     painter->setBrush(bodyGrad);
-    painter->setPen(QPen(QColor(42, 48, 68, 160), 1.0f));
+    painter->setPen(QPen(QColor(38, 48, 78, 150), 1.1f));
     painter->drawPath(cloak);
 
-    QPainterPath hoodRidge;
-    hoodRidge.moveTo(cx - W * 0.27f + lean * 4.f, cy - H * 0.26f);
-    hoodRidge.cubicTo(cx - W * 0.12f + lean * 2.f, cy - H * 0.36f,
-                      cx + W * 0.12f + lean * 2.f, cy - H * 0.36f,
-                      cx + W * 0.27f + lean * 4.f, cy - H * 0.26f);
-    painter->setPen(QPen(QColor(64, 72, 96, 92), 1.3f));
+    // -----------------------------------------------------------------------
+    // 3. Hood detail lines — center-back seam and shoulder rim
+    // -----------------------------------------------------------------------
+    // Center seam: a faint crease down the back of the hood dome
+    QPainterPath seam;
+    seam.moveTo(hoodPeakX, hoodPeakY + H * 0.02f);
+    seam.cubicTo(hoodPeakX + lean * 1.5f, cy - H * 0.28f,
+                 hoodPeakX + lean * 2.0f, cy - H * 0.14f,
+                 cx + bobX + lean * 2.5f, cy - H * 0.02f);
+    painter->setPen(QPen(QColor(52, 58, 88, 75), 0.9f));
     painter->setBrush(Qt::NoBrush);
-    painter->drawPath(hoodRidge);
+    painter->drawPath(seam);
 
+    // Shoulder rim: arc marking where hood meets cloak
+    QPainterPath rim;
+    rim.moveTo(cx - W * 0.30f + lean * 4.f, cy - H * 0.24f);
+    rim.cubicTo(cx - W * 0.12f + lean * 2.f, cy - H * 0.36f,
+                cx + W * 0.12f + lean * 2.f, cy - H * 0.36f,
+                cx + W * 0.30f + lean * 4.f, cy - H * 0.24f);
+    painter->setPen(QPen(QColor(62, 72, 108, 82), 1.0f));
+    painter->drawPath(rim);
+
+    // -----------------------------------------------------------------------
+    // 4. Visor — side glimpse when leaning, full reveal on collect / game-over
+    // -----------------------------------------------------------------------
     if (reveal > 0.f) {
-        drawVisorReveal(painter, cx, cy, W, H, reveal);
+        drawVisorReveal(painter, cx + bobX, cy, W, H, reveal);
     } else if (std::abs(lean) > 0.01f) {
-        const float side = lean > 0.f ? 1.f : -1.f;
-        const float visorX = cx + side * W * 0.31f;
-        const float visorY = cy - H * 0.19f;
+        const float side   = lean > 0.f ? 1.f : -1.f;
+        const float visorX = cx + bobX + side * W * 0.32f;
+        const float visorY = cy - H * 0.18f;
 
-        QRadialGradient sideGlow(visorX, visorY, 15.f);
-        sideGlow.setColorAt(0.0, QColor(80, 255, 120, 125));
-        sideGlow.setColorAt(1.0, QColor(0, 0, 0, 0));
+        // Glow behind the visor sliver
+        QRadialGradient sideGlow(visorX, visorY, 18.f);
+        sideGlow.setColorAt(0.0, QColor(60, 255, 100, 140));
+        sideGlow.setColorAt(1.0, QColor(  0,   0,   0,   0));
         painter->setPen(Qt::NoPen);
         painter->setBrush(sideGlow);
-        painter->drawEllipse(QPointF(visorX, visorY), 15.f, 10.f);
+        painter->drawEllipse(QPointF(visorX, visorY), 18.f, 12.f);
 
-        painter->setBrush(QColor(100, 255, 130, 230));
-        painter->drawRoundedRect(QRectF(visorX - side * 2.f - (side > 0.f ? 2.f : 9.f),
-                                        visorY - 2.f,
-                                        11.f,
-                                        3.4f),
-                                 1.7f,
-                                 1.7f);
+        // The visor bar itself
+        const float barX = visorX - (side > 0.f ? 3.f : 10.f);
+        painter->setBrush(QColor(110, 255, 140, 235));
+        painter->drawRoundedRect(QRectF(barX, visorY - 2.2f, 13.f, 4.0f), 2.f, 2.f);
     }
 }
 
@@ -360,14 +434,32 @@ void GameScene::updateAttract(float dt)
 void GameScene::updateIntro(float dt)
 {
     m_introTimer -= dt;
-    m_time += dt;
-    m_tunnelZ += 80.f * dt;
+    m_time       += dt;
+    m_tunnelZ    += 80.f * dt;
 
-    const float t = qBound(0.f, 1.f - m_introTimer / 2.8f, 1.f);
-    m_vpX = CX + std::sin(m_time * 0.42f) * (55.f + t * 35.f);
-    m_vpY = CY + std::sin(m_time * 0.31f + 1.0f) * (34.f + t * 22.f);
+    constexpr float INTRO_TOTAL  = 4.2f;
+    constexpr float DART_START_T = 0.58f; // normalised t at which gems begin darting
 
-    setOverlay("THE GEMS ESCAPE\n\nGET READY");
+    m_introAnimT = qBound(0.f, 1.f - m_introTimer / INTRO_TOTAL, 1.f);
+
+    // Cuarzito rises into frame: smooth ease-out over first 38% of intro
+    const float riseT    = qBound(0.f, m_introAnimT / 0.38f, 1.f);
+    const float riseEase = 1.f - std::pow(1.f - riseT, 2.8f);
+    m_player.offY = 210.f * (1.f - riseEase);
+
+    // VP: gentle oscillation, amplitude grows slightly as tension builds
+    m_vpX = CX + std::sin(m_time * 0.38f) * (48.f + m_introAnimT * 28.f);
+    m_vpY = CY + std::sin(m_time * 0.28f + 1.0f) * (30.f + m_introAnimT * 16.f);
+
+    // Timed text: silent while rising, then set up context
+    if (m_introAnimT < 0.25f) {
+        setOverlay("");
+    } else if (m_introAnimT < DART_START_T) {
+        setOverlay("THE GEMS ESCAPE");
+    } else {
+        setOverlay("GET READY");
+    }
+
     if (m_input.isConfirmJustPressed() || m_introTimer <= 0.f)
         startCountdown();
 }
@@ -656,12 +748,11 @@ void GameScene::startIntro()
     m_score           = 0.f;
     m_gameOverTimer   = 0.f;
     m_gameOverIdleTimer = 0.f;
-    m_introTimer      = 2.8f;
+    m_introTimer      = 4.2f;
     m_countdownTimer  = 0.f;
     m_chaseTimer      = 20.f;
     m_cleanFlightTime = 0.f;
-    m_revealTimer     = 0.f;
-    m_revealDuration  = 0.f;
+    m_introAnimT      = 0.f;
     m_impactFlash     = 0.f;
     m_scoreSubmitted  = false;
     m_runWon          = false;
@@ -671,8 +762,13 @@ void GameScene::startIntro()
     m_initialIndex    = 0;
     m_state           = GameState::Intro;
 
+    // Cuarzito starts off-screen below; visor reveal fires immediately as he rises
+    m_player.offY     = 210.f;
+    m_revealDuration  = 0.65f;
+    m_revealTimer     = m_revealDuration;
+
     m_hudText.clear();
-    setOverlay("THE GEMS ESCAPE\n\nGET READY");
+    setOverlay("");
     m_audio.play(SoundCue::Start);
 }
 

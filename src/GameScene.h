@@ -152,6 +152,7 @@ private:
 
     float m_worldSpeed      = CHASE_BASE_SPEED;
     float m_tunnelZ         = 0.f;
+    float m_introAnimT      = 0.f;
     float m_survivalTime    = 0.f;
     float m_score           = 0.f;
     float m_gameOverTimer   = 0.f;
