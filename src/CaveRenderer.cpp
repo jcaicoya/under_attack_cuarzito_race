@@ -130,8 +130,11 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
         const float halfW  = TUNNEL_R * FOCAL / relZ;
         if (halfW < 4.f) continue;
 
-        const float depth01    = relZ / (RING_SPACING * NUM_RINGS);
-        const float brightness = std::pow(1.f - std::min(depth01, 1.f), 1.1f);
+        const float depth01 = relZ / (RING_SPACING * NUM_RINGS);
+        // Enclosed mode: far rings fade to near-black quickly so the cave feels
+        // like infinite darkness ahead, not a visible tube.
+        const float brightnessExp = enclosed ? 2.8f : 1.1f;
+        const float brightness = std::pow(1.f - std::min(depth01, 1.f), brightnessExp);
         // Near rings get more roughness for dramatic cave wall detail.
         const float roughness  = 0.24f - depth01 * 0.10f;
         // Phase: world-z based so the same cave "slice" looks consistent as you approach,
@@ -233,15 +236,31 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
     painter->drawPath(polygonPath(endPts));
 
     // -----------------------------------------------------------------------
-    // 5. Enclosed-mode depth fog seals the tunnel centre.
+    // 5. Depth fog — seals the far end of the tunnel.
+    //    Enclosed (gameplay): solid black core fading out, so it feels like
+    //    infinite dark cave ahead rather than a visible tube.
+    //    Open mouth (intro/attract): faint — lets stars show through.
     // -----------------------------------------------------------------------
     if (enclosed) {
-        QRadialGradient sealed(vp, 270.f);
-        sealed.setColorAt(0.0, QColor(3, 6, 10, 240));
-        sealed.setColorAt(0.45, QColor(2, 4, 8, 210));
-        sealed.setColorAt(1.0, QColor(0, 0, 0, 0));
-        painter->setBrush(sealed);
-        painter->drawEllipse(vp, 240.f, 142.f);
+        // Large solid-centre fog: covers most of the visible ring area so
+        // only the nearest, brightest wall sections are visible.
+        QRadialGradient fog(vp, 420.f);
+        fog.setColorAt(0.00, QColor(1, 2, 4, 255));
+        fog.setColorAt(0.25, QColor(1, 2, 5, 252));
+        fog.setColorAt(0.55, QColor(2, 3, 7, 200));
+        fog.setColorAt(0.80, QColor(2, 4, 8,  90));
+        fog.setColorAt(1.00, QColor(0, 0, 0,   0));
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(fog);
+        painter->drawEllipse(vp, 420.f, 260.f);
+    } else {
+        // Open-mouth mode: subtle haze only, stars visible through centre
+        QRadialGradient haze(vp, 200.f);
+        haze.setColorAt(0.0, QColor(2, 4, 8, 80));
+        haze.setColorAt(1.0, QColor(0, 0, 0,  0));
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(haze);
+        painter->drawEllipse(vp, 200.f, 120.f);
     }
 
     // -----------------------------------------------------------------------

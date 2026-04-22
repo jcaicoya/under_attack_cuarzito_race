@@ -1,21 +1,43 @@
 #pragma once
 
 #include <QPointF>
+#include <QVector>
 
 class TunnelPath {
 public:
     struct Sample {
         QPointF center;
         QPointF tangent;
-        float radius = 160.f;
+        float radius     = 160.f;
         float innerRadius = 118.f;
-        float occlusion = 0.f;
+        float occlusion  = 0.f;
+        float curvatureH = 0.f;   // horizontal curvature at this z (radians/unit)
+        float curvatureV = 0.f;   // vertical curvature at this z
     };
 
-    Sample sample(float z) const;
+    TunnelPath();   // precomputes keyframes from the segment table
+
+    Sample  sample(float z) const;
     QPointF gemOffset(int gemIndex, float z) const;
 
+    // Total defined track length in world units
+    float totalLength() const { return m_totalLength; }
+
 private:
-    static QPointF centerAt(float z);
-    static float radiusAt(float z);
+    // Precomputed state at the start of each segment
+    struct Keyframe {
+        float zStart;
+        float x, y;         // tunnel centre world position
+        float angleH;       // horizontal heading (radians, 0 = straight ahead)
+        float angleV;       // vertical heading
+        float curvH;        // curvature for this segment
+        float curvV;
+        float length;
+    };
+
+    QPointF centerAt(float z) const;
+    float   radiusAt(float z) const;
+
+    QVector<Keyframe> m_keyframes;
+    float             m_totalLength = 0.f;
 };

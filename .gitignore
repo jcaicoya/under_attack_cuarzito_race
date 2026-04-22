@@ -21,6 +21,9 @@ _deps/
 *.exp
 *.obj
 
+# Exception: vendored runtime DLLs that travel with the repo
+!libs/*.dll
+
 # Qt generated
 *.autosave
 moc_*.cpp

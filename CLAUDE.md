@@ -125,11 +125,12 @@ Target loop:
 - Gems move forward at constant speed.
 - Cuarzito accelerates and brakes based on player input.
 - The cave path bends in x/y as `z` increases, so the tunnel itself creates the 3D challenge.
+- The tunnel uses discrete segments (straights, curves, inclines, declines) so the player can read what is coming and prepare. Continuous winding is avoided.
+- Centripetal force is simulated: at higher speeds, curves push Cuarzito toward the outer wall. Skilled players brake into sharp corners, accelerate on straights — like a racing game.
 - The tunnel should use sharp enough curves and steep enough rises/drops that the far exit is sometimes partly or fully hidden during turns.
-- Current implementation exposes a first `TunnelPath::Sample::occlusion` value and a painter-based cave cap. Later camera/render work should make this more physically convincing.
 - Presentation target: the intro can show the cave mouth and space behind it, with four stones floating before they enter the tunnel. Gameplay should then feel enclosed inside the tunnel, with no persistent far exit.
 - Orange sparks are intentionally removed for now. The 3D feeling should come from moving walls, ceiling, and floor.
-- Parked future idea: a true 3D labyrinth chase with branching tunnels. This is feasible later, but it should not distract from making the current tunnel traversal feel good.
+- Parked future idea: a true 3D labyrinth chase with branching tunnels and loops. Feasible later once the track editor is built.
 - Wall, floor, and ceiling collisions reduce Cuarzito's speed and break clean-flight bonuses.
 - Each captured gem adds time.
 - Capturing all four gems wins.
@@ -144,21 +145,39 @@ Target controls:
 Core model:
 
 ```text
-TunnelPath.sample(z) -> center x/y, tangent x/y, radius
+TunnelPath.sample(z) -> center x/y, tangent x/y, radius, curvatureH, curvatureV
 
 Player:
   z
   speed
-  local x/y offset from tunnel center
+  local x/y offset from tunnel center (screen-space, relative to VP)
   wall contact state
 
 Gem:
   color
   z
-  constant speed
+  constant speed (clearly slower than Cuarzito base speed — catchable)
   local x/y offset from tunnel center
   collected flag
 ```
+
+## Track System
+
+`TunnelPath` is segment-based. The track is defined as a static table of segments in `TunnelPath.cpp` — edit that table to change the course. Each segment has:
+
+| Field | Meaning |
+|---|---|
+| `length` | World units along the z axis |
+| `curvH` | Horizontal curvature (radians/unit). Positive = curves right. |
+| `curvV` | Vertical curvature (radians/unit). Positive = curves up. |
+
+Keyframe states (position, heading) are precomputed at each segment boundary so `sample(z)` is O(log n). The path is deterministic and identical every run.
+
+**Editing the track:** change the segment table in `TunnelPath.cpp`. A future external visual editor will read/write the same table format. Loops are possible by using large `curvV` values (full vertical loop = `curvV = 2π / length`).
+
+**Centripetal physics constant:** `CENTRIPETAL_K = 0.08f` in `GameScene.cpp`. Increase to make curves harder, decrease to make them more forgiving.
+
+**Gem balance targets:** gems run at ~155 units/s, player base speed is 235. Relative catch-up speed = 80 units/s — clearly catchable on a straight, but curves and wall contacts make it challenging.
 
 ## Design Rules
 
@@ -331,7 +350,7 @@ enum class GameState {
 - [x] Replace direct movement queries with action queries.
 - [x] Keep keyboard mapping.
 - [x] Add basic Windows XInput gamepad support.
-- [x] Add optional dynamic SDL2 backend for DualSense.
+- [x] Add SDL3 dynamic backend for DualSense (confirmed working).
 - Tune dead zone and sensitivity.
 
 ### Phase G - Polish
@@ -343,9 +362,22 @@ enum class GameState {
 - [x] Add fullscreen/event mode toggle with F11.
 - Package runtime dependencies cleanly.
 
+### Phase H - Track and Gameplay Overhaul
+
+- [ ] Replace sine-wave `TunnelPath` with segment-based track (straight/curve/incline/decline).
+- [ ] Expose `curvatureH` and `curvatureV` in `TunnelPath::Sample`.
+- [ ] Add centripetal force physics: curves push Cuarzito toward the outer wall proportional to speed².
+- [ ] Rebalance gem speeds and starting distances so gems are clearly catchable.
+- [ ] Add 3D mini-map (bottom-right HUD): shows tunnel path ahead, Cuarzito, and gem positions.
+- [ ] Design and iterate on a first full track (~4000 world units, 8–10 segments).
+- [ ] Track editor (future): external visual tool that reads/writes the segment table.
+- [ ] Add loops and very sharp turns once the editor exists.
+
 ## Immediate Next Step
 
-1. **Readability test** — test at 1280×720 and fullscreen on the event screen; check HUD contrast, text size, and gem visibility from a distance.
-2. **Restart flow** — restart from game over should go through countdown (Phase E item still unchecked).
-3. **Tune dead zone and sensitivity** (Phase F).
-4. **Package for event** — verify all runtime DLLs deploy correctly alongside the exe.
+Implement Phase H items 1–5 (segment track, centripetal physics, gem balance, mini-map) as a cohesive gameplay overhaul.
+
+Remaining from earlier phases:
+- Readability test at event screen (needs physical screen).
+- Restart flow through countdown (Phase E).
+- Dead zone / sensitivity tuning (Phase F).

@@ -37,6 +37,8 @@ void GameScene::render(QPainter *painter)
     drawBursts(painter);
     drawPopups(painter);
     drawImpactFlash(painter);
+    if (m_state == GameState::Playing)
+        drawMiniMap(painter);
     drawHUD(painter);
 }
 
@@ -463,7 +465,7 @@ void GameScene::updateIntro(float dt)
     }
 
     if (m_input.isConfirmJustPressed() || m_introTimer <= 0.f)
-        startCountdown();
+        startGame();
 }
 
 void GameScene::updateCountdown(float dt)
@@ -554,6 +556,7 @@ void GameScene::updateChasePhysics(float dt)
 {
     m_time += dt;
 
+    // --- Input: steer and throttle ---
     const float steerSpeed = PLAYER_SPEED * (0.72f + m_player.speed / CHASE_MAX_SPEED * 0.42f);
     m_player.offX -= m_input.isMovingLeft()  ? steerSpeed * dt : 0.f;
     m_player.offX += m_input.isMovingRight() ? steerSpeed * dt : 0.f;
@@ -567,9 +570,19 @@ void GameScene::updateChasePhysics(float dt)
     if (!m_input.isAccelerating())
         m_player.speed -= CHASE_DRAG * dt;
 
-    const TunnelPath::Sample current = m_tunnelPath.sample(m_player.z);
-    const float safeX = current.innerRadius * 1.28f;
-    const float safeY = current.innerRadius * 0.88f;
+    m_player.speed = qBound(CHASE_MIN_SPEED, m_player.speed, CHASE_MAX_SPEED);
+
+    // --- Centripetal force BEFORE wall clamp so the clamp can catch it ---
+    // Pushes Cuarzito toward the outer wall on curves (racing physics).
+    // Tuning: CENTRIPETAL_K — raise to make curves harder, lower to ease them.
+    constexpr float CENTRIPETAL_K = 0.04f;
+    const TunnelPath::Sample physSample = m_tunnelPath.sample(m_player.z);
+    m_player.offX += physSample.curvatureH * m_player.speed * m_player.speed * CENTRIPETAL_K * dt;
+    m_player.offY += physSample.curvatureV * m_player.speed * m_player.speed * CENTRIPETAL_K * dt;
+
+    // --- Wall collision and clamp ---
+    const float safeX = physSample.innerRadius * 1.28f;
+    const float safeY = physSample.innerRadius * 0.88f;
     const float nx = safeX > 0.f ? m_player.offX / safeX : 0.f;
     const float ny = safeY > 0.f ? m_player.offY / safeY : 0.f;
     const float wallDistance = std::sqrt(nx * nx + ny * ny);
@@ -589,9 +602,12 @@ void GameScene::updateChasePhysics(float dt)
     m_wasWallContact = m_player.wallContact;
 
     m_player.speed = qBound(CHASE_MIN_SPEED, m_player.speed, CHASE_MAX_SPEED);
-    m_player.z += m_player.speed * dt;
-    m_worldSpeed = m_player.speed;
 
+    // --- Advance position ---
+    m_player.z   += m_player.speed * dt;
+    m_worldSpeed  = m_player.speed;
+
+    // --- VP tracks the tunnel centre ahead ---
     const TunnelPath::Sample lookAhead = m_tunnelPath.sample(m_player.z + 230.f);
     const float targetVpX = CX + lookAhead.center.x() * 0.88f;
     const float targetVpY = CY + lookAhead.center.y() * 0.74f;
@@ -847,11 +863,15 @@ void GameScene::startHighScoreEntry(int score)
 
 void GameScene::resetChaseGems()
 {
+    // Gem speed (155) is clearly slower than player base speed (235).
+    // Relative catch-up = 80 units/s on a straight.  Curves and wall contacts
+    // are the actual challenge, not raw speed.  Starting z values are tighter
+    // so all four gems are reachable within the 20-second window.
     m_chaseGems = {
-        {"BLUE",   QColor( 65, 155, 255), QColor(150, 220, 255),  520.f, 205.f, 23.f,  500, false},
-        {"ORANGE", QColor(255, 135,  35), QColor(255, 215, 105),  860.f, 205.f, 25.f,  750, false},
-        {"YELLOW", QColor(255, 230,  65), QColor(255, 250, 170), 1230.f, 205.f, 27.f, 1000, false},
-        {"CYAN",   QColor( 65, 245, 230), QColor(180, 255, 245), 1640.f, 205.f, 30.f, 1500, false},
+        {"BLUE",   QColor( 65, 155, 255), QColor(150, 220, 255),  350.f, 155.f, 23.f,  500, false},
+        {"ORANGE", QColor(255, 135,  35), QColor(255, 215, 105),  620.f, 155.f, 25.f,  750, false},
+        {"YELLOW", QColor(255, 230,  65), QColor(255, 250, 170),  920.f, 155.f, 27.f, 1000, false},
+        {"CYAN",   QColor( 65, 245, 230), QColor(180, 255, 245), 1250.f, 155.f, 30.f, 1500, false},
     };
 }
 
@@ -1010,6 +1030,113 @@ void GameScene::drawTopScores(QPainter *painter, float x, float y, int maxRows) 
             .arg(entry.score, 5);
         painter->drawText(QPointF(x, y + 32.f + i * 25.f), row);
     }
+
+    painter->restore();
+}
+
+void GameScene::drawMiniMap(QPainter *painter) const
+{
+    // Map panel geometry (bottom-right corner)
+    constexpr float MW   = 170.f;
+    constexpr float MH   = 130.f;
+    constexpr float MX   = SCENE_W - MW - 14.f;
+    constexpr float MY   = SCENE_H - MH - 14.f;
+
+    // World-space window: show from behind to well ahead of player
+    constexpr float Z_BEHIND = 300.f;
+    constexpr float Z_AHEAD  = 2200.f;
+    const float zMin = m_player.z - Z_BEHIND;
+    const float zMax = m_player.z + Z_AHEAD;
+    const float zRange = zMax - zMin;
+
+    // Horizontal extents: sample the path to find bounds
+    constexpr int   SAMPLES  = 80;
+    constexpr float STEP     = (Z_BEHIND + Z_AHEAD) / SAMPLES;
+    float xMin = -1.f, xMax = 1.f;
+    for (int i = 0; i <= SAMPLES; ++i) {
+        const float cx = m_tunnelPath.sample(zMin + i * STEP).center.x();
+        if (cx < xMin) xMin = cx;
+        if (cx > xMax) xMax = cx;
+    }
+    const float xRange = qMax(xMax - xMin, 60.f);
+    const float xPad   = xRange * 0.25f;
+    xMin -= xPad;  const float xTotal = xRange + xPad * 2.f;
+
+    // World → map pixel
+    auto mapX = [&](float wx) {
+        return MX + (wx - xMin) / xTotal * MW;
+    };
+    auto mapY = [&](float wz) {
+        // z increases downward on screen so "ahead" is at top of panel
+        return MY + MH - (wz - zMin) / zRange * MH;
+    };
+
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+
+    // Background panel
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(QColor(4, 8, 14, 185));
+    painter->drawRoundedRect(QRectF(MX - 4, MY - 4, MW + 8, MH + 8), 6.f, 6.f);
+
+    // Clip to panel
+    painter->setClipRect(QRectF(MX, MY, MW, MH));
+
+    // Tunnel path line
+    QPainterPath path;
+    bool first = true;
+    for (int i = 0; i <= SAMPLES; ++i) {
+        const float wz = zMin + i * STEP;
+        const QPointF c = m_tunnelPath.sample(wz).center;
+        const QPointF pt(mapX(c.x()), mapY(wz));
+        if (first) { path.moveTo(pt); first = false; }
+        else        path.lineTo(pt);
+    }
+    painter->setPen(QPen(QColor(60, 90, 110, 200), 2.f));
+    painter->setBrush(Qt::NoBrush);
+    painter->drawPath(path);
+
+    // Player position
+    const QPointF playerCenter = m_tunnelPath.sample(m_player.z).center;
+    const QPointF playerDot(mapX(playerCenter.x() + m_player.offX * 0.15f),
+                             mapY(m_player.z));
+    painter->setPen(Qt::NoPen);
+    QRadialGradient playerGlow(playerDot, 7.f);
+    playerGlow.setColorAt(0.0, QColor(100, 255, 180, 230));
+    playerGlow.setColorAt(1.0, QColor(0, 0, 0, 0));
+    painter->setBrush(playerGlow);
+    painter->drawEllipse(playerDot, 7.f, 7.f);
+    painter->setBrush(QColor(140, 255, 200, 255));
+    painter->drawEllipse(playerDot, 3.f, 3.f);
+
+    // Gem dots
+    for (int i = 0; i < m_chaseGems.size(); ++i) {
+        const ChaseGem &gem = m_chaseGems[i];
+        if (gem.collected) continue;
+        if (gem.z < zMin || gem.z > zMax) continue;
+
+        const QPointF gemCenter = m_tunnelPath.sample(gem.z).center;
+        const QPointF gemDot(mapX(gemCenter.x()), mapY(gem.z));
+
+        QRadialGradient gemGlow(gemDot, 6.f);
+        gemGlow.setColorAt(0.0, QColor(gem.core.red(), gem.core.green(), gem.core.blue(), 200));
+        gemGlow.setColorAt(1.0, QColor(0, 0, 0, 0));
+        painter->setBrush(gemGlow);
+        painter->drawEllipse(gemDot, 6.f, 6.f);
+        painter->setBrush(gem.core.lighter(140));
+        painter->drawEllipse(gemDot, 3.f, 3.f);
+    }
+
+    // "Ahead" direction indicator — thin line at player z
+    painter->setPen(QPen(QColor(80, 130, 160, 120), 1.f, Qt::DotLine));
+    painter->drawLine(QPointF(MX, mapY(m_player.z)), QPointF(MX + MW, mapY(m_player.z)));
+
+    painter->setClipping(false);
+
+    // Label
+    painter->setPen(QColor(80, 140, 160, 180));
+    painter->setFont(QFont("Courier New", 9));
+    painter->drawText(QPointF(MX, MY - 5.f), "MAP");
 
     painter->restore();
 }
