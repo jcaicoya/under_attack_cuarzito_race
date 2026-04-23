@@ -302,21 +302,54 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
         painter->setBrush(cap);
         painter->drawEllipse(capCenter, 92.f + occ * 190.f, 58.f + occ * 128.f);
     }
+
+    // -----------------------------------------------------------------------
+    // 7. Turn-direction wall highlight.
+    //    The VP shifts left/right as the tunnel curves.  Use that displacement
+    //    to tint the outer wall of the curve (the danger side) with a warm
+    //    amber gradient, giving the player an instinctive directional cue.
+    // -----------------------------------------------------------------------
+    if (enclosed) {
+        const float vpOffX = static_cast<float>(vp.x()) - 640.f;
+        const float vpOffY = static_cast<float>(vp.y()) - 360.f;
+        const float hAmt   = qBound(-1.f, vpOffX / 200.f, 1.f);
+        const float vAmt   = qBound(-1.f, vpOffY / 140.f, 1.f);
+
+        if (std::abs(hAmt) > 0.08f) {
+            // Amber glow on the OUTER wall (opposite side from VP displacement)
+            // VP moves right → tunnel bends right → outer wall is LEFT
+            const float gx0 = hAmt > 0.f ? 0.f : 1280.f;
+            const int   alpha = static_cast<int>(std::abs(hAmt) * 52.f);
+            QLinearGradient hGrad(gx0, 360.f, 640.f, 360.f);
+            hGrad.setColorAt(0.0, QColor(200, 120, 30, alpha));
+            hGrad.setColorAt(1.0, QColor(0, 0, 0, 0));
+            painter->fillPath(wallMask, QBrush(hGrad));
+        }
+        if (std::abs(vAmt) > 0.08f) {
+            const float gy0 = vAmt > 0.f ? 0.f : 720.f;
+            const int   alpha = static_cast<int>(std::abs(vAmt) * 42.f);
+            QLinearGradient vGrad(640.f, gy0, 640.f, 360.f);
+            vGrad.setColorAt(0.0, QColor(200, 120, 30, alpha));
+            vGrad.setColorAt(1.0, QColor(0, 0, 0, 0));
+            painter->fillPath(wallMask, QBrush(vGrad));
+        }
+    }
 }
 
 void CaveRenderer::drawFloorGlow(QPainter *painter, const Frame &frame) const
 {
     const QPointF vp = frame.vanishingPoint;
-    const float speedBoost = std::min(frame.worldSpeed / 640.f, 1.f);
+    // speedBoost: 0 at min speed (135), 1 at ~500+ — emphasises acceleration
+    const float speedBoost = std::min(std::max(0.f, (frame.worldSpeed - 135.f) / 365.f), 1.f);
 
-    QRadialGradient floorGlow(vp.x(), vp.y() + 245.f, 240.f);
-    floorGlow.setColorAt(0.00, QColor(20, 225, 190, static_cast<int>(70 + speedBoost * 45)));
-    floorGlow.setColorAt(0.24, QColor(20, 120, 135, 42));
-    floorGlow.setColorAt(0.62, QColor(20, 55, 75, 20));
+    QRadialGradient floorGlow(vp.x(), vp.y() + 245.f, 240.f + speedBoost * 60.f);
+    floorGlow.setColorAt(0.00, QColor(20, 230, 195, static_cast<int>(55 + speedBoost * 95)));
+    floorGlow.setColorAt(0.24, QColor(20, 130, 145, static_cast<int>(30 + speedBoost * 40)));
+    floorGlow.setColorAt(0.62, QColor(20, 60, 80,  static_cast<int>(12 + speedBoost * 20)));
     floorGlow.setColorAt(1.00, QColor(0, 0, 0, 0));
     painter->setPen(Qt::NoPen);
     painter->setBrush(floorGlow);
-    painter->drawEllipse(QPointF(vp.x(), vp.y() + 245.f), 250.f, 95.f);
+    painter->drawEllipse(QPointF(vp.x(), vp.y() + 245.f), 250.f + speedBoost * 60.f, 95.f + speedBoost * 25.f);
 
     QLinearGradient floorPlane(0.f, vp.y() + 180.f, 0.f, 720.f);
     floorPlane.setColorAt(0.0, QColor(0, 0, 0, 0));

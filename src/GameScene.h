@@ -28,6 +28,7 @@ public:
     float tunnelZ() const { return m_tunnelZ; }
     float turnOcclusion() const;
     CaveRenderer::Mode caveMode() const;
+    QPointF cameraShakeOffset() const;
     void showDiagnostics(const QString &text);
     void restartRun();
 
@@ -43,7 +44,7 @@ private:
     static constexpr float PLAYER_SPEED  = 320.f;
     static constexpr float CHASE_MIN_SPEED = 135.f;
     static constexpr float CHASE_BASE_SPEED = 235.f;
-    static constexpr float CHASE_MAX_SPEED = 520.f;
+    static constexpr float CHASE_MAX_SPEED = 440.f;
     static constexpr float CHASE_ACCEL = 260.f;
     static constexpr float CHASE_BRAKE = 430.f;
     static constexpr float CHASE_DRAG = 72.f;
@@ -179,4 +180,5 @@ private:
     QString m_overlayText;
     QString m_diagText;
     float   m_diagTimer = 0.f;
+    float   m_cameraShake = 0.f;
 };

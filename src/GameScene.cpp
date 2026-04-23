@@ -42,6 +42,15 @@ void GameScene::render(QPainter *painter)
     drawHUD(painter);
 }
 
+QPointF GameScene::cameraShakeOffset() const
+{
+    if (m_cameraShake <= 0.001f)
+        return QPointF(0, 0);
+    const float sx = std::sin(m_time * 53.f) * m_cameraShake * 10.f;
+    const float sy = std::cos(m_time * 71.f) * m_cameraShake *  8.f;
+    return QPointF(sx, sy);
+}
+
 float GameScene::playerLean() const
 {
     if (m_input.isMovingLeft() == m_input.isMovingRight())
@@ -349,16 +358,20 @@ void GameScene::drawImpactFlash(QPainter *painter) const
     painter->save();
     painter->setPen(Qt::NoPen);
 
-    QColor wash(110, 255, 210, static_cast<int>(t * 42.f));
+    // Chromatic wash — more visible than before
+    QColor wash(180, 255, 220, static_cast<int>(t * 80.f));
     painter->setBrush(wash);
     painter->drawRect(QRectF(0, 0, SCENE_W, SCENE_H));
 
-    QRadialGradient shock(playerSX(), playerSY(), 170.f * (1.15f - t * 0.15f));
-    shock.setColorAt(0.00, QColor(120, 255, 180, static_cast<int>(t * 110.f)));
-    shock.setColorAt(0.25, QColor(60, 180, 230, static_cast<int>(t * 65.f)));
+    // Large shockwave expanding from player
+    const float shockR = 220.f + (1.f - t) * 160.f;
+    QRadialGradient shock(playerSX(), playerSY(), shockR);
+    shock.setColorAt(0.00, QColor(140, 255, 190, static_cast<int>(t * 160.f)));
+    shock.setColorAt(0.20, QColor(70, 200, 240, static_cast<int>(t * 100.f)));
+    shock.setColorAt(0.55, QColor(20, 80, 130,  static_cast<int>(t *  40.f)));
     shock.setColorAt(1.00, QColor(0, 0, 0, 0));
     painter->setBrush(shock);
-    painter->drawEllipse(QPointF(playerSX(), playerSY()), 190.f, 150.f);
+    painter->drawEllipse(QPointF(playerSX(), playerSY()), shockR, shockR * 0.78f);
 
     painter->restore();
 }
@@ -375,6 +388,8 @@ void GameScene::update(float dt)
         m_revealTimer = qMax(0.f, m_revealTimer - dt);
     if (m_impactFlash > 0.f)
         m_impactFlash = qMax(0.f, m_impactFlash - dt * 2.8f);
+    if (m_cameraShake > 0.f)
+        m_cameraShake = qMax(0.f, m_cameraShake - dt * 5.5f);
     if (m_diagTimer > 0.f)
         m_diagTimer = qMax(0.f, m_diagTimer - dt);
 
@@ -558,7 +573,7 @@ void GameScene::updateChasePhysics(float dt)
     //
     // Tuning target: with no steering, the first 45-degree left turn should
     // push Cuarzito into the right wall near the end of the curve.
-    constexpr float CURVE_INERTIA_K = 1.60f;
+    constexpr float CURVE_INERTIA_K = 2.20f;
     const TunnelPath::Sample physSample = m_tunnelPath.sample(m_player.z);
     m_player.offX -= physSample.curvatureH * m_player.speed * m_player.speed * CURVE_INERTIA_K * dt;
     m_player.offY -= physSample.curvatureV * m_player.speed * m_player.speed * CURVE_INERTIA_K * dt;
@@ -575,12 +590,15 @@ void GameScene::updateChasePhysics(float dt)
         if (!m_wasWallContact) {
             ++m_wallHitCount;
             m_score = qMax(0.f, m_score - 45.f);
+            // Flash and shake scale with speed — a high-speed crash is punishing.
+            const float hitT = m_player.speed / CHASE_MAX_SPEED;
+            m_impactFlash  = qMax(m_impactFlash,  0.30f + hitT * 0.55f);
+            m_cameraShake  = qMax(m_cameraShake,  0.22f + hitT * 0.38f);
         }
         const float clampScale = 1.f / wallDistance;
         m_player.offX *= clampScale;
         m_player.offY *= clampScale;
         m_player.speed -= 260.f * dt;
-        m_impactFlash = qMax(m_impactFlash, 0.18f);
     }
     m_wasWallContact = m_player.wallContact;
 
@@ -593,11 +611,13 @@ void GameScene::updateChasePhysics(float dt)
     // --- VP tracks tunnel direction ahead (relative, not absolute world pos) ---
     // Using lookAhead - current keeps VP bounded regardless of how far the
     // tunnel has drifted in world space across many segments.
-    const QPointF currentCenter  = m_tunnelPath.sample(m_player.z).center;
-    const QPointF lookAheadCenter = m_tunnelPath.sample(m_player.z + 230.f).center;
+    // Look further ahead so upcoming turns displace the VP earlier, making
+    // curves visually obvious on the walls before Cuarzito enters them.
+    const QPointF currentCenter   = m_tunnelPath.sample(m_player.z).center;
+    const QPointF lookAheadCenter = m_tunnelPath.sample(m_player.z + 360.f).center;
     const QPointF relDir = lookAheadCenter - currentCenter;
-    const float targetVpX = CX + relDir.x() * 0.88f;
-    const float targetVpY = CY + relDir.y() * 0.74f;
+    const float targetVpX = CX + relDir.x() * 1.05f;
+    const float targetVpY = CY + relDir.y() * 0.88f;
     m_vpX += (targetVpX - m_vpX) * qMin(1.f, dt * 4.4f);
     m_vpY += (targetVpY - m_vpY) * qMin(1.f, dt * 4.4f);
 
@@ -689,6 +709,7 @@ void GameScene::startGame()
     m_revealTimer     = 0.f;
     m_revealDuration  = 0.f;
     m_impactFlash     = 0.f;
+    m_cameraShake     = 0.f;
     m_scoreSubmitted  = false;
     m_runWon          = false;
     m_wasWallContact  = false;
@@ -724,6 +745,7 @@ void GameScene::startAttract()
     m_revealTimer     = 0.f;
     m_revealDuration  = 0.f;
     m_impactFlash     = 0.f;
+    m_cameraShake     = 0.f;
     m_scoreSubmitted  = false;
     m_runWon          = false;
     m_wasWallContact  = false;
@@ -759,6 +781,7 @@ void GameScene::startIntro()
     m_cleanFlightTime = 0.f;
     m_introAnimT      = 0.f;
     m_impactFlash     = 0.f;
+    m_cameraShake     = 0.f;
     m_scoreSubmitted  = false;
     m_runWon          = false;
     m_wasWallContact  = false;
@@ -800,6 +823,7 @@ void GameScene::startCountdown()
     m_revealTimer     = 0.f;
     m_revealDuration  = 0.f;
     m_impactFlash     = 0.f;
+    m_cameraShake     = 0.f;
     m_scoreSubmitted  = false;
     m_runWon          = false;
     m_wasWallContact  = false;
@@ -854,11 +878,13 @@ void GameScene::resetChaseGems()
     // Relative catch-up = 80 units/s on a straight.  Curves and wall contacts
     // are the actual challenge, not raw speed.  Starting z values are tighter
     // so all four gems are reachable within the 20-second window.
+    // Gems are now faster so the player must actively accelerate to catch them,
+    // not simply coast at base speed.  Progressive speeds make later gems harder.
     m_chaseGems = {
-        {"BLUE",   QColor( 65, 155, 255), QColor(150, 220, 255),  350.f, 155.f, 23.f,  500, false},
-        {"ORANGE", QColor(255, 135,  35), QColor(255, 215, 105),  620.f, 155.f, 25.f,  750, false},
-        {"YELLOW", QColor(255, 230,  65), QColor(255, 250, 170),  920.f, 155.f, 27.f, 1000, false},
-        {"CYAN",   QColor( 65, 245, 230), QColor(180, 255, 245), 1250.f, 155.f, 30.f, 1500, false},
+        {"BLUE",   QColor( 65, 155, 255), QColor(150, 220, 255),  380.f, 178.f, 23.f,  500, false},
+        {"ORANGE", QColor(255, 135,  35), QColor(255, 215, 105),  680.f, 182.f, 25.f,  750, false},
+        {"YELLOW", QColor(255, 230,  65), QColor(255, 250, 170), 1040.f, 186.f, 27.f, 1000, false},
+        {"CYAN",   QColor( 65, 245, 230), QColor(180, 255, 245), 1460.f, 190.f, 30.f, 1500, false},
     };
 }
 
@@ -1028,11 +1054,12 @@ void GameScene::drawTopScores(QPainter *painter, float x, float y, int maxRows) 
 
 void GameScene::drawMiniMap(QPainter *painter) const
 {
-    // Map panel geometry (bottom-right corner)
+    // Map panel geometry — generous margins so it stays in the safe zone even
+    // on ultrawide displays where cover-scaling crops the bottom/right edges.
     constexpr float MW   = 170.f;
     constexpr float MH   = 130.f;
-    constexpr float MX   = SCENE_W - MW - 14.f;
-    constexpr float MY   = SCENE_H - MH - 14.f;
+    constexpr float MX   = SCENE_W - MW - 82.f;
+    constexpr float MY   = SCENE_H - MH - 92.f;
 
     // World-space window: show from behind to well ahead of player
     constexpr float Z_BEHIND = 300.f;
@@ -1066,9 +1093,9 @@ void GameScene::drawMiniMap(QPainter *painter) const
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
 
-    // Background panel
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(QColor(4, 8, 14, 185));
+    // Background panel with visible teal border so it doesn't blend into cave
+    painter->setPen(QPen(QColor(40, 140, 160, 200), 1.5f));
+    painter->setBrush(QColor(4, 10, 18, 210));
     painter->drawRoundedRect(QRectF(MX - 4, MY - 4, MW + 8, MH + 8), 6.f, 6.f);
 
     // Clip to panel
@@ -1093,13 +1120,13 @@ void GameScene::drawMiniMap(QPainter *painter) const
     const QPointF playerDot(mapX(playerCenter.x() + m_player.offX * 0.15f),
                              mapY(m_player.z));
     painter->setPen(Qt::NoPen);
-    QRadialGradient playerGlow(playerDot, 7.f);
-    playerGlow.setColorAt(0.0, QColor(100, 255, 180, 230));
+    QRadialGradient playerGlow(playerDot, 10.f);
+    playerGlow.setColorAt(0.0, QColor(100, 255, 180, 210));
     playerGlow.setColorAt(1.0, QColor(0, 0, 0, 0));
     painter->setBrush(playerGlow);
-    painter->drawEllipse(playerDot, 7.f, 7.f);
-    painter->setBrush(QColor(140, 255, 200, 255));
-    painter->drawEllipse(playerDot, 3.f, 3.f);
+    painter->drawEllipse(playerDot, 10.f, 10.f);
+    painter->setBrush(QColor(160, 255, 210, 255));
+    painter->drawEllipse(playerDot, 4.f, 4.f);
 
     // Gem dots
     for (int i = 0; i < m_chaseGems.size(); ++i) {
@@ -1126,8 +1153,8 @@ void GameScene::drawMiniMap(QPainter *painter) const
     painter->setClipping(false);
 
     // Label
-    painter->setPen(QColor(80, 140, 160, 180));
-    painter->setFont(QFont("Courier New", 9));
+    painter->setPen(QColor(80, 200, 200, 220));
+    painter->setFont(QFont("Courier New", 9, QFont::Bold));
     painter->drawText(QPointF(MX, MY - 5.f), "MAP");
 
     painter->restore();

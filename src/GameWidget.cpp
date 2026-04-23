@@ -49,6 +49,10 @@ void GameWidget::paintGL()
     painter.translate(ox, oy);
     painter.scale(scale, scale);
 
+    const QPointF shake = m_scene->cameraShakeOffset();
+    if (!shake.isNull())
+        painter.translate(shake);
+
     m_caveRenderer.render(&painter, {
         QSizeF(logicalW, logicalH),
         m_scene->vanishingPoint(),
