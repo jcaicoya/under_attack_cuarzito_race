@@ -70,6 +70,18 @@ float GameScene::turnOcclusion() const
     return m_tunnelPath.sample(m_player.z + 180.f).occlusion;
 }
 
+float GameScene::playerOffYNorm() const
+{
+    const float safeY = m_tunnelPath.sample(m_player.z).innerRadius * 0.88f;
+    return safeY > 0.f ? qBound(-1.f, m_player.offY / safeY, 1.f) : 0.f;
+}
+
+float GameScene::playerOffXNorm() const
+{
+    const float safeX = m_tunnelPath.sample(m_player.z).innerRadius * 1.28f;
+    return safeX > 0.f ? qBound(-1.f, m_player.offX / safeX, 1.f) : 0.f;
+}
+
 CaveRenderer::Mode GameScene::caveMode() const
 {
     return m_state == GameState::Playing
@@ -182,13 +194,17 @@ void GameScene::drawChaseGems(QPainter *painter) const
 
 void GameScene::drawPlayer(QPainter *painter) const
 {
-    const float cx = playerSX();
-    // Bob: gentle vertical float with a very slight lateral sway for life
+    // Project Cuarzito at PLAYER_DRAW_DEPTH using the same perspective formula
+    // as the tunnel rings. This places him geometrically inside the tunnel so
+    // wall contact is visually convincing — near the ceiling he appears near
+    // the top of the screen, near the floor he appears near the bottom.
+    const float scale = FOCAL / PLAYER_DRAW_DEPTH;
+    const float cx    = m_vpX + m_player.offX * scale;
     const float bobY  = std::sin(m_time * 6.8f) * 3.8f;
     const float bobX  = std::sin(m_time * 4.1f + 1.2f) * 1.4f;
-    // Third-person: anchor Cuarzito in the lower portion of the screen so he
-    // reads as close to the camera. Vertical steering still tilts him slightly.
-    const float cy    = SCENE_H * 0.70f + m_player.offY * 0.35f + bobY;
+    // Small downward bias (30px) so neutral position sits just below the VP
+    // rather than exactly at it, giving a mild over-the-shoulder feel.
+    const float cy    = m_vpY + 30.f + m_player.offY * scale + bobY;
     const float lean  = playerLean();
     const float reveal = m_revealDuration > 0.f
         ? qBound(0.f, m_revealTimer / m_revealDuration, 1.f)
@@ -372,9 +388,15 @@ void GameScene::drawImpactFlash(QPainter *painter) const
     painter->setBrush(wash);
     painter->drawRect(QRectF(0, 0, SCENE_W, SCENE_H));
 
-    // In first-person there is no visible character — centre the shock on VP.
-    const float fsx = (m_viewMode == ViewMode::FirstPerson) ? m_vpX : playerSX();
-    const float fsy = (m_viewMode == ViewMode::FirstPerson) ? m_vpY : playerSY();
+    // Centre the shockwave on the projected character position so it aligns with
+    // the visual. In first-person there is no character — use the VP instead.
+    const float drawScale = FOCAL / PLAYER_DRAW_DEPTH;
+    const float fsx = (m_viewMode == ViewMode::FirstPerson)
+        ? m_vpX
+        : m_vpX + m_player.offX * drawScale;
+    const float fsy = (m_viewMode == ViewMode::FirstPerson)
+        ? m_vpY
+        : m_vpY + 30.f + m_player.offY * drawScale;
 
     // Large shockwave expanding from impact point
     const float shockR = 220.f + (1.f - t) * 160.f;
@@ -517,8 +539,13 @@ void GameScene::updatePlaying(float dt)
             m_audio.play(SoundCue::CollectSpecial);
             m_revealDuration = 0.52f;
             m_revealTimer = m_revealDuration;
-            spawnBurst(playerSX(), playerSY() - 22.f, true);
-            m_popups.append({playerSX(), playerSY() - 42.f, gem.value, 1.0f});
+            {
+                const float ds = FOCAL / PLAYER_DRAW_DEPTH;
+                const float bsx = m_vpX + m_player.offX * ds;
+                const float bsy = m_vpY + 30.f + m_player.offY * ds;
+                spawnBurst(bsx, bsy - 22.f, true);
+                m_popups.append({bsx, bsy - 42.f, gem.value, 1.0f});
+            }
             m_cleanFlightTime += 3.f;
         }
     }
@@ -603,10 +630,10 @@ void GameScene::updateChasePhysics(float dt)
         if (!m_wasWallContact) {
             ++m_wallHitCount;
             m_score = qMax(0.f, m_score - 45.f);
-            // Flash and shake scale with speed — a high-speed crash is punishing.
             const float hitT = m_player.speed / CHASE_MAX_SPEED;
             m_impactFlash  = qMax(m_impactFlash,  0.30f + hitT * 0.55f);
             m_cameraShake  = qMax(m_cameraShake,  0.22f + hitT * 0.38f);
+            spawnWallSparks();
         }
         const float clampScale = 1.f / wallDistance;
         m_player.offX *= clampScale;
@@ -631,11 +658,15 @@ void GameScene::updateChasePhysics(float dt)
     const QPointF relDir = lookAheadCenter - currentCenter;
     float targetVpX = CX + relDir.x() * 1.05f;
     float targetVpY = CY + relDir.y() * 0.88f;
-    // First-person: lean the camera into the player's steering offset so the
-    // walls shift as if seen through Cuarzito's eyes.
     if (m_viewMode == ViewMode::FirstPerson) {
+        // First-person: full camera lean — walls shift as if seen through Cuarzito's eyes.
         targetVpX += m_player.offX * 0.42f;
         targetVpY += m_player.offY * 0.42f;
+    } else {
+        // Third-person: subtle VP tilt based on player Y so the camera tilts
+        // slightly toward whatever surface Cuarzito is approaching.
+        targetVpX += m_player.offX * 0.10f;
+        targetVpY += m_player.offY * 0.15f;
     }
     m_vpX += (targetVpX - m_vpX) * qMin(1.f, dt * 4.4f);
     m_vpY += (targetVpY - m_vpY) * qMin(1.f, dt * 4.4f);
@@ -930,6 +961,47 @@ void GameScene::spawnBurst(float sx, float sy, bool special)
     }
 }
 
+void GameScene::spawnWallSparks()
+{
+    // Spawn rock-chip sparks from the screen edge on the contact side,
+    // flying inward — makes it feel like Cuarzito scraped the cave wall.
+    const float safeX = m_tunnelPath.sample(m_player.z).innerRadius * 1.28f;
+    const float safeY = m_tunnelPath.sample(m_player.z).innerRadius * 0.88f;
+    const float nx    = safeX > 0.f ? m_player.offX / safeX : 0.f;
+    const float ny    = safeY > 0.f ? m_player.offY / safeY : 0.f;
+
+    // Which wall did we hit? Dominant axis.
+    float inX = 0.f, inY = 0.f, spawnX = 0.f, spawnY = 0.f;
+    if (std::abs(nx) >= std::abs(ny)) {
+        inX    = nx > 0.f ? -1.f : 1.f;   // inward direction
+        spawnX = nx > 0.f ? SCENE_W - 24.f : 24.f;
+        spawnY = qBound(60.f, playerSY(), SCENE_H - 60.f);
+    } else {
+        inY    = ny > 0.f ? -1.f : 1.f;
+        spawnX = qBound(60.f, playerSX(), SCENE_W - 60.f);
+        spawnY = ny > 0.f ? SCENE_H - 24.f : 24.f;
+    }
+
+    auto *rng = QRandomGenerator::global();
+    constexpr int COUNT = 12;
+    for (int i = 0; i < COUNT; ++i) {
+        const float spread = static_cast<float>((rng->generateDouble() - 0.5) * M_PI * 0.75);
+        const float spd    = 70.f + static_cast<float>(rng->generateDouble()) * 160.f;
+        const float ca = std::cos(spread), sa = std::sin(spread);
+        BurstParticle p;
+        p.sx     = spawnX + static_cast<float>((rng->generateDouble() - 0.5) * 50.f);
+        p.sy     = spawnY + static_cast<float>((rng->generateDouble() - 0.5) * 50.f);
+        p.vx     = (inX * ca - inY * sa) * spd;
+        p.vy     = (inX * sa + inY * ca) * spd;
+        p.radius = 1.4f + static_cast<float>(rng->generateDouble() * 2.8f);
+        p.life   = 1.f;
+        const int r = 190 + static_cast<int>(rng->generateDouble() * 65.0);
+        const int g = 90  + static_cast<int>(rng->generateDouble() * 70.0);
+        p.color  = QColor(r, g, 28);
+        m_bursts.append(p);
+    }
+}
+
 void GameScene::setOverlay(const QString &text)
 {
     m_overlayText = text;
@@ -992,6 +1064,7 @@ void GameScene::drawHUD(QPainter *painter) const
         painter->setPen(QColor(100, 255, 200));
         painter->drawText(QPointF(20.f, 34.f), m_hudText);
     }
+
 
     if (!m_overlayText.isEmpty()) {
         QFont overlayFont("Courier New", 30, QFont::Bold);

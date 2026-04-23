@@ -61,6 +61,8 @@ void GameWidget::paintGL()
         m_scene->worldSpeed(),
         m_scene->turnOcclusion(),
         m_scene->tunnelZ(),
+        m_scene->playerOffYNorm(),
+        m_scene->playerOffXNorm(),
         m_scene->caveMode()
     });
     m_scene->render(&painter);

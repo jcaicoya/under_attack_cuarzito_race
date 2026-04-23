@@ -27,6 +27,8 @@ public:
     float worldSpeed() const { return m_worldSpeed; }
     float tunnelZ() const { return m_tunnelZ; }
     float turnOcclusion() const;
+    float playerOffYNorm() const;
+    float playerOffXNorm() const;
     CaveRenderer::Mode caveMode() const;
     QPointF cameraShakeOffset() const;
     void showDiagnostics(const QString &text);
@@ -44,7 +46,11 @@ private:
     static constexpr float SCENE_H = 720.f;
     static constexpr float CX      = SCENE_W / 2.f;   // screen center X
     static constexpr float CY      = SCENE_H / 2.f;   // screen center Y
-    static constexpr float FOCAL   = 400.f;
+    static constexpr float FOCAL            = 400.f;
+    // Virtual depth at which Cuarzito is drawn in third-person.
+    // Chosen so his physics boundary (safeY≈104) projects to within 16px of
+    // the visible tunnel ring boundary at that depth — wall contact looks real.
+    static constexpr float PLAYER_DRAW_DEPTH = 200.f;
     static constexpr float PLAYER_SPEED  = 320.f;
     static constexpr float CHASE_MIN_SPEED = 135.f;
     static constexpr float CHASE_BASE_SPEED = 235.f;
@@ -112,6 +118,7 @@ private:
     void endGame();
     void resetChaseGems();
     void spawnBurst(float sx, float sy, bool special);
+    void spawnWallSparks();
 
     void updateAttract(float dt);
     void updateIntro(float dt);

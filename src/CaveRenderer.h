@@ -22,6 +22,8 @@ public:
         float worldSpeed = 0.f;
         float turnOcclusion = 0.f;
         float playerZ = 0.f;
+        float playerOffYNorm = 0.f;  // -1 = near ceiling, +1 = near floor
+        float playerOffXNorm = 0.f;  // -1 = near left wall, +1 = near right wall
         Mode mode = Mode::OpenMouth;
     };
 
@@ -40,6 +42,7 @@ private:
     void drawSpace(QPainter *painter, const Frame &frame) const;
     void drawCave(QPainter *painter, const Frame &frame) const;
     void drawFloorGlow(QPainter *painter, const Frame &frame) const;
+    void drawWallProximity(QPainter *painter, const Frame &frame) const;
 
     static QList<QPointF> caveRing(const QPointF &vp, float halfW, float halfH,
                                    float phase, float roughness);

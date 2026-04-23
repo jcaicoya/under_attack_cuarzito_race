@@ -39,6 +39,7 @@ void CaveRenderer::render(QPainter *painter, const Frame &frame) const
     drawSpace(painter, frame);
     drawCave(painter, frame);
     drawFloorGlow(painter, frame);
+    drawWallProximity(painter, frame);
 
     painter->restore();
 }
@@ -339,17 +340,33 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
 void CaveRenderer::drawFloorGlow(QPainter *painter, const Frame &frame) const
 {
     const QPointF vp = frame.vanishingPoint;
-    // speedBoost: 0 at min speed (135), 1 at ~500+ — emphasises acceleration
+    // speedBoost: 0 at min speed (135), 1 at ~500+
     const float speedBoost = std::min(std::max(0.f, (frame.worldSpeed - 135.f) / 365.f), 1.f);
+    // yBoost: near-floor brightens the glow; near-ceiling dims it
+    const float yBoost = frame.playerOffYNorm;   // -1 ceiling … +1 floor
 
-    QRadialGradient floorGlow(vp.x(), vp.y() + 245.f, 240.f + speedBoost * 60.f);
-    floorGlow.setColorAt(0.00, QColor(20, 230, 195, static_cast<int>(55 + speedBoost * 95)));
-    floorGlow.setColorAt(0.24, QColor(20, 130, 145, static_cast<int>(30 + speedBoost * 40)));
-    floorGlow.setColorAt(0.62, QColor(20, 60, 80,  static_cast<int>(12 + speedBoost * 20)));
+    const float baseAlpha  = 55.f + speedBoost * 95.f + yBoost * 55.f;
+    const float glowRadius = 250.f + speedBoost * 60.f + std::max(0.f, yBoost) * 40.f;
+
+    QRadialGradient floorGlow(vp.x(), vp.y() + 245.f, glowRadius);
+    floorGlow.setColorAt(0.00, QColor(20, 230, 195, static_cast<int>(qBound(0.f, baseAlpha, 255.f))));
+    floorGlow.setColorAt(0.24, QColor(20, 130, 145, static_cast<int>(qBound(0.f, baseAlpha * 0.46f, 255.f))));
+    floorGlow.setColorAt(0.62, QColor(20, 60, 80,  static_cast<int>(qBound(0.f, baseAlpha * 0.20f, 255.f))));
     floorGlow.setColorAt(1.00, QColor(0, 0, 0, 0));
     painter->setPen(Qt::NoPen);
     painter->setBrush(floorGlow);
-    painter->drawEllipse(QPointF(vp.x(), vp.y() + 245.f), 250.f + speedBoost * 60.f, 95.f + speedBoost * 25.f);
+    painter->drawEllipse(QPointF(vp.x(), vp.y() + 245.f), glowRadius, 95.f + speedBoost * 25.f + std::max(0.f, yBoost) * 20.f);
+
+    // Ceiling proximity vignette — dark gradient creeping down from the top
+    // when Cuarzito is near the ceiling (playerOffYNorm strongly negative).
+    const float ceilAmt = std::max(0.f, -frame.playerOffYNorm - 0.20f) / 0.80f;
+    if (ceilAmt > 0.001f) {
+        QLinearGradient ceilGrad(0.f, 0.f, 0.f, 260.f);
+        ceilGrad.setColorAt(0.0, QColor(8, 18, 32, static_cast<int>(ceilAmt * 160.f)));
+        ceilGrad.setColorAt(1.0, QColor(0, 0, 0, 0));
+        painter->setBrush(ceilGrad);
+        painter->drawRect(QRectF(0.f, 0.f, 1280.f, 260.f));
+    }
 
     QLinearGradient floorPlane(0.f, vp.y() + 180.f, 0.f, 720.f);
     floorPlane.setColorAt(0.0, QColor(0, 0, 0, 0));
@@ -414,6 +431,66 @@ QList<QPointF> CaveRenderer::screenCoverRing(const QPointF &vp, const QSizeF &lo
     }
 
     return points;
+}
+
+void CaveRenderer::drawWallProximity(QPainter *painter, const Frame &frame) const
+{
+    if (frame.mode != Mode::EnclosedTunnel) return;
+
+    painter->save();
+    painter->setPen(Qt::NoPen);
+
+    const float xn = frame.playerOffXNorm;  // -1 left wall … +1 right wall
+    const float yn = frame.playerOffYNorm;  // -1 ceiling  … +1 floor
+
+    // For each wall: compute proximity (0–1 above threshold), then draw a
+    // gradient band from the screen edge inward.  At contact (norm ≈ 1) the
+    // band is bright amber-white; approaching it it's a dim cave-rock orange.
+    constexpr float THRESHOLD  = 0.38f;   // start showing glow here
+    constexpr float MAX_WIDTH  = 220.f;   // pixels from edge at full proximity
+    const float     W          = static_cast<float>(frame.logicalSize.width());
+    const float     H          = static_cast<float>(frame.logicalSize.height());
+
+    auto edge = [&](float norm, bool horizontal, bool positiveEdge) {
+        const float abs_n = std::abs(norm);
+        const float prox  = std::max(0.f, abs_n - THRESHOLD) / (1.f - THRESHOLD);
+        if (prox < 0.005f) return;
+
+        const bool  contact   = abs_n > 0.92f;
+        const float bandW     = prox * MAX_WIDTH;
+        const int   peakAlpha = contact ? 210 : static_cast<int>(prox * 140.f);
+        // Rock amber at distance, white-hot at contact
+        const QColor peak = contact
+            ? QColor(255, 210, 120, peakAlpha)
+            : QColor(210, 110,  30, peakAlpha);
+
+        QLinearGradient grad;
+        QRectF rect;
+        if (horizontal) {
+            const float ex = positiveEdge ? W : 0.f;
+            const float dx = positiveEdge ? -bandW : bandW;
+            grad = QLinearGradient(ex, H * 0.5f, ex + dx, H * 0.5f);
+            rect = positiveEdge ? QRectF(W - bandW, 0.f, bandW, H)
+                                : QRectF(0.f, 0.f, bandW, H);
+        } else {
+            const float ey = positiveEdge ? H : 0.f;
+            const float dy = positiveEdge ? -bandW : bandW;
+            grad = QLinearGradient(W * 0.5f, ey, W * 0.5f, ey + dy);
+            rect = positiveEdge ? QRectF(0.f, H - bandW, W, bandW)
+                                : QRectF(0.f, 0.f, W, bandW);
+        }
+        grad.setColorAt(0.0, peak);
+        grad.setColorAt(1.0, QColor(0, 0, 0, 0));
+        painter->setBrush(QBrush(grad));
+        painter->drawRect(rect);
+    };
+
+    edge(xn,  true,  true);   // right wall
+    edge(-xn, true,  false);  // left wall
+    edge(yn,  false, true);   // floor
+    edge(-yn, false, false);  // ceiling
+
+    painter->restore();
 }
 
 QPainterPath CaveRenderer::polygonPath(const QList<QPointF> &points)
