@@ -21,6 +21,7 @@ public:
         float survivalTime = 0.f;
         float worldSpeed = 0.f;
         float turnOcclusion = 0.f;
+        float verticalOcclusion = 0.f; // -1 uphill/top hide, +1 downhill/bottom hide
         float playerZ = 0.f;
         float playerOffYNorm = 0.f;  // -1 = near ceiling, +1 = near floor
         float playerOffXNorm = 0.f;  // -1 = near left wall, +1 = near right wall

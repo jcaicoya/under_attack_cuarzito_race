@@ -29,6 +29,7 @@ public:
     float worldSpeed() const { return m_worldSpeed; }
     float tunnelZ() const { return m_tunnelZ; }
     float turnOcclusion() const;
+    float verticalOcclusion() const;
     float playerOffYNorm() const;
     float playerOffXNorm() const;
     CaveRenderer::Mode caveMode() const;

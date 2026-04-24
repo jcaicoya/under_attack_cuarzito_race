@@ -147,6 +147,9 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
         const QPointF worldCenter(640.f, 360.f);
         const QPointF frontCenter = vp;
         const QPointF farShift = vp - worldCenter;
+        const float vOccSigned = frame.verticalOcclusion;
+        const float vOcc = std::abs(vOccSigned);
+        const float vDir = vOccSigned < 0.f ? -1.f : 1.f;
         const float scrollPhase = std::fmod(frame.playerZ, RING_SPACING);
         const float firstRelZ = RING_SPACING - scrollPhase;
 
@@ -164,9 +167,13 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
 
             const float depth01 = qBound(0.f, relZ / (RING_SPACING * TOTAL_BOXES), 1.f);
             const float curveT = std::pow(depth01, 0.72f);
-            const QPointF center = frontCenter + farShift * curveT;
-            const float half = TUNNEL_R * FOCAL / relZ;
+            QPointF center = frontCenter + farShift * curveT;
+            float half = TUNNEL_R * FOCAL / relZ;
             if (half < 2.5f) continue;
+
+            const float farWeight = std::pow(depth01, 1.35f);
+            center.ry() += vDir * farWeight * (vOcc * 86.f);
+            half *= 1.f - farWeight * (vOcc * 0.24f);
 
             boxes.append({relZ, frame.playerZ + relZ, half, depth01,
                           center, squareRing(center, half), false});
@@ -491,13 +498,14 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
     // -----------------------------------------------------------------------
     // 6. Turn-occlusion cap (unchanged — blocks the far exit on curves).
     // -----------------------------------------------------------------------
+    QPointF turnDir = vp - QPointF(640.f, 360.f);
+    const float turnDirLen = std::hypot(turnDir.x(), turnDir.y());
+    if (turnDirLen > 0.001f)
+        turnDir /= turnDirLen;
+    else
+        turnDir = QPointF(std::sin(frame.time * 0.4f), std::cos(frame.time * 0.33f));
+
     if (frame.turnOcclusion > 0.02f) {
-        QPointF turnDir = vp - QPointF(640.f, 360.f);
-        const float len = std::hypot(turnDir.x(), turnDir.y());
-        if (len > 0.001f)
-            turnDir /= len;
-        else
-            turnDir = QPointF(std::sin(frame.time * 0.4f), std::cos(frame.time * 0.33f));
 
         const float occ = frame.turnOcclusion;
         if (enclosed) {
@@ -538,6 +546,31 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
             painter->setBrush(cap);
             painter->drawEllipse(capCenter, 92.f + occ * 190.f, 58.f + occ * 128.f);
         }
+    }
+
+    const float vOccSigned = frame.verticalOcclusion;
+    const float vOcc = std::abs(vOccSigned);
+    if (enclosed && vOcc > 0.02f) {
+        const float dir = vOccSigned < 0.f ? -1.f : 1.f;
+        const QPointF capCenter(vp.x(), vp.y() + dir * (6.f + vOcc * 18.f));
+        const float wideR = 176.f + vOcc * 340.f;
+        const float tallR = 78.f + vOcc * 168.f;
+
+        QRadialGradient cap(capCenter, wideR);
+        cap.setColorAt(0.0, QColor(2, 4, 8, static_cast<int>(188 + vOcc * 56.f)));
+        cap.setColorAt(0.42, QColor(5, 8, 13, static_cast<int>(124 + vOcc * 68.f)));
+        cap.setColorAt(1.0, QColor(0, 0, 0, 0));
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(cap);
+        painter->drawEllipse(capCenter, wideR, tallR);
+
+        const QPointF shoulder = capCenter + QPointF(0.f, dir * (12.f + vOcc * 24.f));
+        QRadialGradient shoulderShade(shoulder, 168.f + vOcc * 210.f);
+        shoulderShade.setColorAt(0.0, QColor(1, 2, 5, static_cast<int>(72 + vOcc * 80.f)));
+        shoulderShade.setColorAt(0.72, QColor(3, 5, 9, static_cast<int>(38 + vOcc * 54.f)));
+        shoulderShade.setColorAt(1.0, QColor(0, 0, 0, 0));
+        painter->setBrush(shoulderShade);
+        painter->drawEllipse(shoulder, 188.f + vOcc * 220.f, 122.f + vOcc * 162.f);
     }
 
     // -----------------------------------------------------------------------

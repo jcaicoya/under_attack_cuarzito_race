@@ -258,6 +258,19 @@ float GameScene::turnOcclusion() const
     return m_tunnelPath.sample(m_player.z + 180.f).occlusion;
 }
 
+float GameScene::verticalOcclusion() const
+{
+    const QPointF nearC = m_tunnelPath.sample(m_player.z + 90.f).center;
+    const QPointF farC  = m_tunnelPath.sample(m_player.z + 430.f).center;
+    const float dy = static_cast<float>(farC.y() - nearC.y());
+    const float absDy = std::abs(dy);
+    const float t = qBound(0.f, (absDy - 35.f) / 170.f, 1.f);
+    const float amt = t * t * (3.f - 2.f * t);
+    if (amt <= 0.f)
+        return 0.f;
+    return dy < 0.f ? -amt : amt;
+}
+
 float GameScene::playerOffYNorm() const
 {
     const float safeY = m_tunnelPath.sample(m_player.z).innerRadius * kSafeYFactor;

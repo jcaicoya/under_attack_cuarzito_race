@@ -4,7 +4,7 @@ A short arcade pre-show minigame for the **Cuarzito** cyber-theatre experience. 
 
 The game launches fullscreen by default for event use. Press `F11` to toggle fullscreen/windowed mode during development.
 
-The player controls **Cuarzito**, a small dark hooded figure with a neon green visor, while flying through a cosmic crystal cave. The game is pivoting from a survival/dodge prototype into a chase game: Cuarzito pursues four flying gems through a winding tunnel before time runs out.
+The player controls **Cuarzito**, a small dark hooded figure with a neon green visor, while flying through a cosmic crystal cave. The game is now a chase game: Cuarzito pursues four flying gems through a winding tunnel, trying to finish the route, catch all gems, and avoid running out of energy from crashes.
 
 ## Current State
 
@@ -14,7 +14,7 @@ The repository currently contains a playable Qt prototype with an OpenGL-ready w
 - `GameScene : QObject` for game state, updates, projection, and draw helpers.
 - `QPainter` rendering on top of the OpenGL widget.
 - Fixed 1280x720 gameplay canvas.
-- Attract, intro, countdown, playing, game-over, and high-score entry states.
+- Attract, intro, countdown, playing, success-flyout, failure-glide, game-over, and high-score entry states.
 - Keyboard input: arrows/WASD, Space/Enter, Shift/Ctrl, R, Escape, F11.
 - Pseudo-3D projection using a moving vanishing point.
 - Four-direction player movement inside the tunnel.
@@ -23,6 +23,10 @@ The repository currently contains a playable Qt prototype with an OpenGL-ready w
 - Procedural placeholder Cuarzito drawn with `QPainter`.
 - Dedicated `CaveRenderer` with a QPainter-based streaming faceted tunnel.
 - Track data loaded from `resources/tracks/demo_tunnel.json` and `resources/tracks/live_tunnel.json` through Qt resources.
+- Attract-mode track selection with Left/Right and confirm.
+- Per-track gem `startZ` and `speed` configuration loaded from each track JSON.
+- Energy-based failure in place of the old countdown-loss model.
+- Route-driven vertical horizon hiding for uphill/downhill in enclosed tunnel gameplay.
 - Fullscreen uses fit scaling so the full authored 1280x720 frame stays visible on ultrawide screens.
 - Cuarzito is currently drawn without a persistent aura to preserve tunnel visibility.
 
@@ -30,36 +34,35 @@ The prototype proves the core loop works. The current cave renderer is intention
 
 ## Current Resume Note
 
-Stopped during the vertical-motion debugging pass.
+Current implemented state:
 
-What is in place now:
+- The selectable tracks are:
+  - `demo_tunnel`: short route for quick tests
+  - `live_tunnel`: longer route for gameplay and long tests
+- The game ends when one of these happens:
+  - Cuarzito reaches the end of the current track
+  - all four gems are collected
+  - energy reaches `0`
+- Endings are now split into three non-interactive variants before the final score/high-score screen:
+  - `TRACK COMPLETE`
+  - `ALL GEMS CAPTURED`
+  - `OUT OF ENERGY`
+- Mini-map markers now show route position only:
+  - Cuarzito steering inside the tunnel does not move the map marker
+  - gem local orbit offsets are ignored on the mini-map too
+- Uphill/downhill horizon hiding now works by deforming the enclosed far box-stack itself
+- The visible size pop near center was removed by making that vertical deformation proportional to the current occlusion amount
 
-- CLI test mode:
+Still intentionally true:
+
+- default runs start invulnerable for testing/demo convenience
+- invulnerability can also be toggled manually with `I`
+- the safe-zone rectangle is still drawn during gameplay for debugging
+- curve inertia is still intentionally set to `0.0`
+- CLI test mode still exists:
   - `cuarzito-race.exe --test downhill`
   - `cuarzito-race.exe --test uphill`
   - `cuarzito-race.exe --test vertical`
-- dedicated test tracks under `resources/tracks/tests/`
-- test runs start directly in `Playing`, force invulnerability, and exit when the test track ends
-- test runs write trace output to `stderr`
-- invulnerability can also be toggled manually with `I`
-- fullscreen now preserves the whole authored frame on ultrawide
-- a projected safe-zone rectangle is always drawn during gameplay for debugging
-
-Current blocking issue:
-
-- uphill/downhill compensation is still wrong
-- desired rule:
-  - uphill/downhill move the corridor
-  - pressing `Up` / `Down` compensates that motion
-  - with the correct input, Cuarzito should look similar to how he would in a straight segment
-- actual result:
-  - the safe-zone box, Cuarzito's visible position, and collision state do not yet fully agree
-  - on uphill, pressing `Up` still does not reliably cancel the uphill effect
-
-Temporary debug simplification already applied:
-
-- curve inertia is currently set to `0.0` on purpose
-- do not restore inertia until the vertical compensation contract works cleanly
 
 ## Visual References
 
@@ -100,11 +103,11 @@ The target game is a short chase through a cave/tunnel:
 - **Accelerate:** one button/key increases Cuarzito's speed.
 - **Brake:** one button/key reduces speed for tighter control.
 - **Chase:** four colored gems fly ahead of Cuarzito at constant speed.
-- **Catch:** reaching a gem adds time and advances the chase.
-- **Avoid walls:** scraping the wall, floor, or ceiling slows Cuarzito instead of instantly killing him.
-- **Win:** collect all four gems.
-- **Lose:** timer reaches zero before all gems are collected.
-- **Session target:** successful runs should still feel short, around 60 to 90 seconds.
+- **Catch:** reaching a gem adds score and advances the chase.
+- **Avoid walls:** scraping the wall, floor, or ceiling reduces energy and slows Cuarzito instead of instantly killing him.
+- **Win:** either collect all four gems or finish the track.
+- **Lose:** run out of energy.
+- **Session target:** `demo_tunnel` is short for iteration; `live_tunnel` is the current longer gameplay route.
 
 Presentation target:
 
@@ -225,15 +228,20 @@ src/
 - [x] Add first chase movement pass: `z`, speed, acceleration, braking, and local tunnel offset.
 - [x] Remove old survival movement assumptions from remaining obstacle/collectible code.
 - [x] Replace random collectible spawning with four persistent flying gems.
-- [x] Add timer extensions per captured gem.
+- [x] Replace the old timer-loss model with energy-based failure.
 - [x] Add wall/floor/ceiling speed penalties.
 - [x] Add win state for collecting all gems.
+- [x] Add alternate win state for reaching the end of the track.
 - [x] Retune scoring for time, clean flight, wall contacts, and gem captures.
 - [x] Limit Cuarzito's top speed for a more controlled tunnel traversal.
 - [x] Remove orange spark particles from gameplay.
 - [x] Add structural intro/pre-chase state before countdown.
 - [x] Draw first intro screen pass: cave exit visible, four stones floating before the chase.
 - [x] Make gameplay tunnel feel enclosed, with the far exit usually hidden.
+- [x] Split short and long routes into `demo_tunnel` and `live_tunnel`.
+- [x] Add attract-mode track selection.
+- [x] Make gem pacing configurable per track JSON.
+- [x] Add non-interactive ending variants before the final score screen.
 - [ ] Animate Cuarzito approaching and the stones entering the tunnel during intro.
 
 ### 1. Verify and Preserve the Prototype
@@ -305,12 +313,12 @@ src/
 
 - [ ] Improve what can be seen at the end of the tunnel so the player can read the route without losing the enclosed cave feeling.
 - [ ] Make left/right/up/down turns visible directly on the walls, ceiling, and floor; current turns are not pronounced enough.
-- [ ] Restore and retune curve inertia after the vertical compensation contract is fixed. It is intentionally set to zero right now for debugging.
+- [ ] Restore and retune curve inertia after the current route-driven control model is fully signed off. It is intentionally set to zero right now.
 - [ ] Add stronger acceleration and braking feel: speed lines, tunnel pulse, FOV/projection response, engine/air sound, or equivalent feedback.
 - [ ] Simplify/tune the 3D cube mini-map so left/right/up/down track motion is readable without clutter.
 - [ ] Build a GUI tunnel editor for the selectable track JSON files under `resources/tracks/`.
 - [ ] Rebalance speeds so Cuarzito cannot trivially overtake gems; he may need to brake or manage distance to let gems pass/settle ahead.
-- [ ] On game end, make Cuarzito exit the cave into the stars/space instead of only stopping in the tunnel/game-over overlay.
+- [ ] Polish the three ending variants further: track complete, all gems captured, and out of energy.
 - [ ] Add obstacles inside the tunnel.
 - [ ] Improve the tunnel appearance: richer facets, better material contrast, more readable depth, and stronger cave identity.
 - [ ] Make crashes much more obvious with stronger visual, motion, and audio feedback.

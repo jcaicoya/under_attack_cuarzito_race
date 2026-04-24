@@ -61,6 +61,7 @@ void GameWidget::paintGL()
         m_scene->survivalTime(),
         m_scene->worldSpeed(),
         m_scene->turnOcclusion(),
+        m_scene->verticalOcclusion(),
         m_scene->tunnelZ(),
         m_scene->playerOffYNorm(),
         m_scene->playerOffXNorm(),

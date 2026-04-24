@@ -1,21 +1,22 @@
 # Track Format
 
-The tunnel track is loaded from Qt resources at startup. The first track lives at:
+Tracks are loaded from Qt resources at startup. The current built-in tracks are:
 
 ```text
 resources/tracks/demo_tunnel.json
+resources/tracks/live_tunnel.json
 ```
 
-It is embedded through:
+They are embedded through:
 
 ```text
 resources/resources.qrc
 ```
 
-Runtime code reads it with:
+Runtime uses the selected resource path, for example:
 
 ```cpp
-QFile file(":/tracks/demo_tunnel.json");
+TunnelPath(QStringLiteral(":/tracks/demo_tunnel.json"));
 ```
 
 ## Units
@@ -28,7 +29,7 @@ distance = 200 units/second * 1 second
 distance = 200 world units
 ```
 
-The first prototype used `200` world units for every segment. The current first tunnel keeps the same unit scale, but uses:
+The first prototype used `200` world units for every segment. The current authored tracks keep the same unit scale, but usually use:
 
 ```text
 straight distance = 200 units/second * 3 seconds = 600 world units
@@ -81,25 +82,61 @@ curvature = 0.001963 radians per world unit
 
 Horizontal curvature drives left/right tunnel bending. Vertical curvature drives uphill/downhill bending.
 
-## Physics
+## Track-Level Gem Config
 
-`TunnelPath::Sample` exposes `curvatureH` and `curvatureV`. `GameScene` uses those values for curve inertia:
+Each track can also define a `gems` array. This is how gem pacing is tuned per route.
 
-```text
-drift = -curvature * speed^2 * CURVE_INERTIA_K * dt
+Supported fields:
+
+| Field | Meaning |
+|---|---|
+| `startZ` | initial world-z position of the gem |
+| `speed` | forward speed of the gem |
+
+Example:
+
+```json
+"gems": [
+  { "startZ": 380, "speed": 205 },
+  { "startZ": 680, "speed": 212 },
+  { "startZ": 1040, "speed": 219 },
+  { "startZ": 1460, "speed": 226 }
+]
 ```
 
-The negative sign is intentional: a left curve pushes Cuarzito toward the right wall, and a right curve pushes him toward the left wall. Sharper turns, longer held speed, and higher player speed push Cuarzito farther toward the outside wall. Braking before a turn should make the curve easier to hold.
+If a track omits a gem config, runtime falls back to the built-in defaults for that gem slot.
 
-## First Tunnel Pattern
+## Runtime Behavior Notes
 
-The first track now starts with:
+`TunnelPath::Sample` exposes:
+
+- `center`
+- `tangent`
+- `radius`
+- `innerRadius`
+- `occlusion`
+- `curvatureH`
+- `curvatureV`
+
+Current gameplay uses the sampled route for:
+
+- camera look-ahead
+- safe-zone placement
+- route-driven drift
+- turn occlusion
+- vertical horizon hiding
+
+Curve inertia is still intentionally disabled while the current tunnel-control model is being tuned, so do not treat the old inertia formula as active documentation.
+
+## Current Track Intent
+
+`demo_tunnel` is the short route for quick tests. Its current pattern is:
 
 ```text
-straight, left, straight, right, straight, uphill, straight, downhill...
+straight -> uphill -> straight -> downhill -> straight -> left -> straight -> right -> straight
 ```
 
-Straight segments are `600` world units. Turn segments are `400` world units. Every turn is `45` degrees.
+`live_tunnel` is the longer route for gameplay and longer balancing passes. It mixes several uphill, downhill, left, and right sections with straights in between.
 
 ## Next Format Needs
 
@@ -110,6 +147,7 @@ The current JSON format is enough for the first hand-authored tunnel, but the ne
 - Stronger turn previews so left/right/up/down bends are visible on walls, ceiling, and floor.
 - Optional segment metadata for obstacles.
 - Optional per-segment difficulty or inertia multiplier if one global curve force is not enough.
+- Optional richer per-gem settings if later needed, such as value or pickup radius.
 - Export back to the same Qt resource JSON format.
 
 The editor should preserve the current `segments` array so runtime loading remains simple.
