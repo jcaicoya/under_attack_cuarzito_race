@@ -48,13 +48,21 @@ Implemented now:
 - Dedicated `CaveRenderer` with a QPainter-based streaming faceted tunnel.
 - Track data loaded from `resources/tracks/first_tunnel.json` through Qt resources.
 - R restarts the current run immediately for testing.
-- Fullscreen uses cover scaling so ultrawide displays are filled instead of letterboxed.
+- Fullscreen now uses fit scaling so the full 1280x720 authored frame remains visible on ultrawide displays.
 - Cuarzito's persistent aura is currently disabled for tunnel visibility.
 - Third-person / first-person view toggle with `V`. Third-person is default. First-person to be iterated later.
+- `I` toggles invulnerability. Crash visuals still play; score/speed penalties are skipped while invulnerable.
+- CLI test mode exists: `cuarzito-race.exe --test downhill|uphill|vertical`. It skips intro/countdown, loads a dedicated resource track, auto-starts in `Playing`, forces invulnerability, and exits when the test track ends.
+- CLI test mode writes trace lines to `stderr` so automated runs can be inspected from the console.
 - Speed-scaled crash feedback: impact flash, expanding shockwave, and camera shake all scale with player speed at time of wall contact.
 - Turn wall cue: outer wall of curves receives a subtle amber tint in `CaveRenderer` proportional to VP displacement.
-- Mini-map restored with teal border, safe-zone margins, and larger player dot.
+- Mini-map has been iterated into a cube-like 3D debug view, but it still needs readability tuning.
 - Intro flow goes directly to `Playing` (no countdown after intro — intentional design decision).
+- Wall proximity edge glow: each screen edge brightens amber as Cuarzito approaches that wall. Starts at 38% proximity, flashes near-white at contact. Drawn by `CaveRenderer::drawWallProximity()`.
+- Wall contact sparks: on first contact, 12 amber rock-chip particles burst inward from the correct screen edge (`GameScene::spawnWallSparks()`).
+- Floor/ceiling proximity: floor glow scales with both speed and player Y offset. Dark vignette creeps from the top of the screen when near the ceiling.
+- Cuarzito projected at `PLAYER_DRAW_DEPTH = 200` world units using the same perspective formula as the tunnel rings (`cx = vpX + offX × FOCAL/200`, `cy = vpY + 30 + offY × FOCAL/200`). At the physics boundary, the character appears within 14–16px of the visible tunnel ring — wall contact is geometrically convincing. Impact shockwave, gem bursts, and score popups all use the same projected position.
+- A persistent projected safe-zone rectangle is now drawn during gameplay. It is based on the same `safeX` / `safeY` factors used by collision and is intended for debugging the vertical movement contract.
 
 Important files:
 
@@ -63,7 +71,7 @@ Important files:
 | `src/main.cpp` | QApplication entry point and signal handling. |
 | `src/MainWindow.*` | Creates the main window and installs `GameWidget`. |
 | `src/GameWidget.*` | `QOpenGLWidget`, forwards keyboard events, owns timer, cave renderer, and aspect fit. |
-| `src/CaveRenderer.*` | Draws dark faceted cave, space, stars, Polaris, aurora, and floor glow. |
+| `src/CaveRenderer.*` | Draws dark faceted cave, space, stars, Polaris, aurora, floor glow, wall proximity glow. |
 | `src/GameScene.*` | Game state, entities, projection, updates, drawing. |
 | `src/TunnelPath.*` | Provides deterministic tunnel center/radius samples by world `z` for the chase redesign. |
 | `src/AudioManager.*` | Generates cue tones and a subtle ambient loop, then plays them through `QSoundEffect`. |
@@ -71,6 +79,30 @@ Important files:
 | `CMakeLists.txt` | Qt Widgets plus OpenGL/OpenGLWidgets build. |
 
 The tunnel traversal is working and the walls, floor, and ceiling stream past the camera. The current priority is improving readability and game feel: the route ahead, turns, acceleration/braking, crashes, vertical motion, and gem pacing still need iteration.
+
+### Current Vertical-Motion Problem
+
+This is the exact resume point.
+
+- Goal:
+  - uphill/downhill should behave like left/right turns
+  - `uphill`: the floor should feel like it rises toward the player
+  - `downhill`: the ceiling should feel like it drops toward the player
+  - pressing `Up` / `Down` should compensate tunnel motion and bring the player back toward the same apparent centered state as a straight section
+- What was changed:
+  - curve inertia has been temporarily reduced all the way to `0.0` to remove kinetic drift as a confounding factor
+  - vertical VP sign and floor/ceiling shading were adjusted to better match the intended visual rule
+  - the collision/safe-zone debug rectangle is now always visible during `Playing`
+  - vertical safe range was widened so `Up` does not instantly hit the ceiling
+  - direct input influence on `targetVpY` was increased substantially so manual compensation is easier to read
+- What is still wrong:
+  - on uphill sections, the safe-zone box and the actual collision state are still not fully aligned
+  - pressing `Up` does not yet compensate the uphill motion as expected
+  - a screenshot showed Cuarzito inside the drawn safe zone while still visually/behaviorally crashing
+- Next debugging direction:
+  1. keep inertia at zero until the compensation contract works
+  2. verify that pressing `Up` on uphill moves both the player and the safe-zone framing toward the same apparent center
+  3. if the safe-zone box says "safe" but contact still happens, inspect collision state and draw state side by side rather than adding more camera tuning
 
 ## Tunnel Renderer — How It Works
 
@@ -126,7 +158,7 @@ Player direction:
 
 During normal gameplay, Cuarzito is facing away from the camera. Do not draw the full green visor in the default rear-view pose. The visor may be shown only as a small side glimpse during lateral movement, or in explicit start, pickup, and game-over turn/spin animations. At game size, the default pose should read as a dark hooded back silhouette without a persistent aura.
 
-In third-person mode (default), Cuarzito is anchored at 70% screen height (`SCENE_H * 0.70f`) and drawn at size `W=92, H=112` — larger and closer than before. In first-person mode (`V` to toggle), Cuarzito is not drawn and player steering shifts the VP directly.
+In third-person mode (default), Cuarzito is drawn using the tunnel perspective formula at `PLAYER_DRAW_DEPTH = 200` world units: `cx = vpX + offX × 2`, `cy = vpY + 30 + offY × 2`. This places him geometrically inside the tunnel — at the ceiling he appears near the top of the screen, at the floor near the bottom, matching the visible ring geometry within 14–16px. Size `W=92, H=112`. In first-person mode (`V` to toggle), Cuarzito is not drawn and player steering shifts the VP directly.
 
 ## Chase Game Design
 
@@ -190,9 +222,9 @@ The loader converts `angleDegrees / length` into curvature, then precomputes key
 
 **Editing the track:** change `resources/tracks/first_tunnel.json`. A future external visual editor should read/write the same table format. Loops are possible later by using large vertical angles over a segment.
 
-**Curve inertia constant:** `CURVE_INERTIA_K = 2.20f` in `GameScene.cpp`. Increase to make curves harder, decrease to make them more forgiving. The sign is intentionally opposite the path curvature: a left curve pushes Cuarzito toward the right/outside wall, and a right curve pushes him toward the left/outside wall.
+**Curve inertia constant:** currently forced to `CURVE_INERTIA_K = 0.0f` in `GameScene.cpp` for vertical-motion debugging. Restore a non-zero value only after uphill/downhill compensation is behaving correctly. Historically it was `2.20f`, then `1.10f`.
 
-**VP look-ahead:** `360` world units, multipliers `1.05x` horizontal / `0.88x` vertical. This makes upcoming turns visually apparent on the walls before the player enters them. Smoothing factor `4.4/s`.
+**VP look-ahead:** `360` world units. Horizontal multiplier is `1.05x`. Vertical behavior is currently under active debugging and should not be treated as final documentation yet. Smoothing factor `4.4/s`.
 
 **Gem balance:** gems run at progressive speeds (178 / 182 / 186 / 190 units/s), starting at z = 380 / 680 / 1040 / 1460. Player base speed is 235, max speed capped at 440. Catch-up at base speed is 45–57 units/s — requires deliberate acceleration. Each collected gem adds 20 s to the chase timer.
 
@@ -387,6 +419,8 @@ enum class GameState {
 - [x] Load the first tunnel from a Qt resource JSON file instead of hardcoding track values.
 - [x] Rebalance gem speeds and starting distances so gems are clearly catchable.
 - [x] Add 3D mini-map (bottom-right HUD): shows tunnel path ahead, Cuarzito, and gem positions.
+- [x] Add CLI test mode (`--test downhill|uphill|vertical`) with dedicated resource tracks and automatic exit at track end.
+- [x] Add CLI trace output to `stderr` for test-mode runs.
 - [ ] Design and iterate on a first full track (~4000 world units, 8–10 segments).
 - [ ] Track editor (future): external visual tool that reads/writes the segment table.
 - [ ] Add loops and very sharp turns once the editor exists.
@@ -395,8 +429,11 @@ enum class GameState {
 
 Resume with the next gameplay and visual pass:
 
-- Iterate first-person mode (currently functional but not tuned): feel, gem visibility, HUD adaptation.
-- Make up/down movement obvious — vertical position in tunnel lacks clear visual feedback.
+- Finish the vertical compensation contract before restoring inertia:
+  - uphill/downhill should move the corridor
+  - `Up` / `Down` should compensate that movement
+  - safe-zone overlay and actual collision state must agree
+- Then iterate first-person mode (currently functional but not tuned): feel, gem visibility, HUD adaptation.
 - Improve what can be seen at the end of the tunnel without turning gameplay into open space.
 - Build a GUI editor for the tunnel JSON format.
 - Make Cuarzito exit into the stars/space when the game ends.

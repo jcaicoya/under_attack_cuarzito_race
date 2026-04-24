@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "test_vertical",
+  "segments": [
+    { "type": "straight", "length": 400 },
+    { "type": "uphill", "length": 500, "angleDegrees": 45 },
+    { "type": "straight", "length": 300 },
+    { "type": "downhill", "length": 500, "angleDegrees": 45 },
+    { "type": "straight", "length": 300 }
+  ]
+}

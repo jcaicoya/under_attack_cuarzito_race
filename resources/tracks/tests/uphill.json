@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "test_uphill",
+  "segments": [
+    { "type": "straight", "length": 500 },
+    { "type": "uphill", "length": 700, "angleDegrees": 55 },
+    { "type": "straight", "length": 500 }
+  ]
+}

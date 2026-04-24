@@ -1,13 +1,14 @@
 #include "GameWidget.h"
 
+#include "GameLaunchOptions.h"
 #include "GameScene.h"
 
 #include <QKeyEvent>
 #include <QPainter>
 
-GameWidget::GameWidget(QWidget *parent) : QOpenGLWidget(parent)
+GameWidget::GameWidget(const GameLaunchOptions &options, QWidget *parent) : QOpenGLWidget(parent)
 {
-    m_scene = new GameScene(this);
+    m_scene = new GameScene(options, this);
 
     setFocusPolicy(Qt::StrongFocus);
     setFocus();
@@ -37,9 +38,9 @@ void GameWidget::paintGL()
     constexpr float logicalH = 720.f;
     const float sx = width() / logicalW;
     const float sy = height() / logicalH;
-    // Cover the whole physical screen. On ultrawide displays this crops a
-    // little vertically instead of showing black side bars.
-    const float scale = qMax(sx, sy);
+    // Preserve the full authored frame. On ultrawide displays this adds
+    // side bars instead of cropping HUD/map content out of view.
+    const float scale = qMin(sx, sy);
     const float targetW = logicalW * scale;
     const float targetH = logicalH * scale;
     const float ox = (width() - targetW) * 0.5f;
@@ -92,6 +93,10 @@ void GameWidget::keyPressEvent(QKeyEvent *event)
     }
     if (event->key() == Qt::Key_V) {
         m_scene->toggleViewMode();
+        return;
+    }
+    if (event->key() == Qt::Key_I) {
+        m_scene->toggleInvulnerability();
         return;
     }
     if (event->key() == Qt::Key_F1) {

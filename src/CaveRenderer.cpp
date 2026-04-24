@@ -100,6 +100,126 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
     constexpr int   NUM_RINGS    = 22;      // rings to place ahead of the camera
     constexpr float NEAR_CLIP    = 1.f;     // only skip rings at/behind the camera
 
+    if (enclosed) {
+        struct BoxRing {
+            float relZ;
+            float worldZ;
+            float half;
+            float depth01;
+            QPointF center;
+            QList<QPointF> pts;
+            bool screenCover;
+        };
+
+        auto squareRing = [](const QPointF &center, float half) {
+            return QList<QPointF>{
+                QPointF(center.x() - half, center.y() - half),
+                QPointF(center.x() + half, center.y() - half),
+                QPointF(center.x() + half, center.y() + half),
+                QPointF(center.x() - half, center.y() + half),
+            };
+        };
+
+        auto bandPath = [](const QList<QPointF> &outerPts,
+                           const QList<QPointF> &innerPts,
+                           int side) {
+            const int next = (side + 1) % 4;
+            QPainterPath path;
+            path.moveTo(outerPts[side]);
+            path.lineTo(outerPts[next]);
+            path.lineTo(innerPts[next]);
+            path.lineTo(innerPts[side]);
+            path.closeSubpath();
+            return path;
+        };
+
+        auto screenCoverSquare = [](const QSizeF &logicalSize) {
+            constexpr float margin = 260.f;
+            return QList<QPointF>{
+                QPointF(-margin, -margin),
+                QPointF(static_cast<float>(logicalSize.width()) + margin, -margin),
+                QPointF(static_cast<float>(logicalSize.width()) + margin,
+                        static_cast<float>(logicalSize.height()) + margin),
+                QPointF(-margin, static_cast<float>(logicalSize.height()) + margin),
+            };
+        };
+
+        const QPointF worldCenter(640.f, 360.f);
+        const QPointF frontCenter = vp;
+        const QPointF farShift = vp - worldCenter;
+        const float scrollPhase = std::fmod(frame.playerZ, RING_SPACING);
+        const float firstRelZ = RING_SPACING - scrollPhase;
+
+        constexpr int EXTRA_BOXES = 10;
+        constexpr int TOTAL_BOXES = NUM_RINGS + EXTRA_BOXES;
+
+        QList<BoxRing> boxes;
+        boxes.reserve(TOTAL_BOXES + 1);
+        boxes.append({0.f, frame.playerZ, 0.f, 0.f, frontCenter,
+                      screenCoverSquare(frame.logicalSize), true});
+
+        for (int i = 0; i < TOTAL_BOXES; ++i) {
+            const float relZ = firstRelZ + i * RING_SPACING;
+            if (relZ < NEAR_CLIP) continue;
+
+            const float depth01 = qBound(0.f, relZ / (RING_SPACING * TOTAL_BOXES), 1.f);
+            const float curveT = std::pow(depth01, 0.72f);
+            const QPointF center = frontCenter + farShift * curveT;
+            const float half = TUNNEL_R * FOCAL / relZ;
+            if (half < 2.5f) continue;
+
+            boxes.append({relZ, frame.playerZ + relZ, half, depth01,
+                          center, squareRing(center, half), false});
+        }
+
+        if (boxes.size() < 2) return;
+
+        painter->fillRect(QRectF(QPointF(0, 0), frame.logicalSize), QColor(3, 5, 10));
+
+        for (int r = boxes.size() - 2; r >= 0; --r) {
+            const BoxRing &outer = boxes[r];
+            const BoxRing &inner = boxes[r + 1];
+            const float bright = std::pow(1.f - inner.depth01, 0.75f);
+            const float pulse = std::sin(inner.worldZ * 0.018f) * 0.5f + 0.5f;
+
+            const QColor sideWall(7 + static_cast<int>(bright * 16.f),
+                                  13 + static_cast<int>(bright * 20.f),
+                                  25 + static_cast<int>(bright * 30.f),
+                                  246);
+            const QColor ceiling(5 + static_cast<int>(bright * 11.f),
+                                  8 + static_cast<int>(bright * 13.f),
+                                  18 + static_cast<int>(bright * 22.f),
+                                  250);
+            const QColor floor(5 + static_cast<int>(bright * 10.f),
+                               18 + static_cast<int>(bright * 25.f + pulse * 8.f),
+                               26 + static_cast<int>(bright * 28.f + pulse * 10.f),
+                               250);
+
+            const QColor fills[4] = {ceiling, sideWall.lighter(112), floor, sideWall};
+            for (int side = 0; side < 4; ++side) {
+                QPainterPath panel = bandPath(outer.pts, inner.pts, side);
+                QLinearGradient grad(outer.pts[side], inner.pts[(side + 1) % 4]);
+                grad.setColorAt(0.0, fills[side].lighter(112));
+                grad.setColorAt(0.62, fills[side]);
+                grad.setColorAt(1.0, fills[side].darker(135));
+                painter->setBrush(grad);
+                painter->setPen(QPen(QColor(20, 92, 108, static_cast<int>(42 + bright * 80.f)), 1.0f));
+                painter->drawPath(panel);
+            }
+        }
+
+        const float turnCue = qBound(0.f,
+            static_cast<float>(std::hypot(farShift.x() / 220.f, farShift.y() / 150.f)),
+            1.f);
+
+        const BoxRing &frontBox = boxes[1];
+        painter->setBrush(Qt::NoBrush);
+        painter->setPen(QPen(QColor(42, 126, 138, 58 + static_cast<int>(turnCue * 16.f)), 1.1f));
+        painter->drawPath(polygonPath(frontBox.pts));
+
+        return;
+    }
+
     // -----------------------------------------------------------------------
     // 1. Build streaming ring descriptors.
     //
@@ -133,9 +253,10 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
         if (halfW < 4.f) continue;
 
         const float depth01 = relZ / (RING_SPACING * NUM_RINGS);
-        // Enclosed mode still needs enough far-ring contrast for the player to
-        // read incoming turns during the chase.
-        const float brightnessExp = enclosed ? 1.45f : 1.1f;
+        // Flatter falloff so far rings stay readable — the player must be able
+        // to see turns coming.  Open-mouth uses a slightly steeper drop-off
+        // so the cave throat still frames the space view.
+        const float brightnessExp = enclosed ? 0.85f : 1.1f;
         const float brightness = std::pow(1.f - std::min(depth01, 1.f), brightnessExp);
         // Near rings get more roughness for dramatic cave wall detail.
         const float roughness  = 0.24f - depth01 * 0.10f;
@@ -231,9 +352,11 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
 
             const float avgBright = 0.5f * (outerRing.brightness + innerRing.brightness);
             const float side = std::sin(i * 1.73f + innerRing.phase * 0.9f) * 0.5f + 0.5f;
-            const int   base = static_cast<int>(6.f + avgBright * 20.f + side * 10.f);
-            const QColor rock(base / 2, base / 2 + 2, base + 8, 240);
-            const QColor edge(15, 35 + static_cast<int>(side * 20.f + avgBright * 18.f), 52, 72);
+            // Higher base and multiplier so far facets are visibly textured rock,
+            // not just near-black smears.
+            const int   base = static_cast<int>(8.f + avgBright * 28.f + side * 12.f);
+            const QColor rock(base / 2, base / 2 + 2, base + 10, 240);
+            const QColor edge(15, 38 + static_cast<int>(side * 22.f + avgBright * 20.f), 55, 80);
 
             QLinearGradient grad(outerPts[i], innerPts[next]);
             grad.setColorAt(0.0, rock.darker(148));
@@ -247,14 +370,95 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
     }
 
     // -----------------------------------------------------------------------
-    // 4. Far end cap — fill the innermost (farthest) ring with deep darkness.
+    // 3b. Route-reading structure.
+    //     The facets make the cave feel rocky; these thin contour/ridge lines
+    //     make the tunnel direction readable at speed, especially in curves.
+    // -----------------------------------------------------------------------
+    if (enclosed && rings.size() > 4) {
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+
+        const float vpOffX = static_cast<float>(vp.x()) - 640.f;
+        const float vpOffY = static_cast<float>(vp.y()) - 360.f;
+        const float turnCue = qBound(0.f,
+            static_cast<float>(std::hypot(vpOffX / 220.f, vpOffY / 150.f)),
+            1.f);
+
+        for (int r = 2; r < rings.size(); r += 3) {
+            const RingDesc &ring = rings[r];
+            const QList<QPointF> pts = caveRing(vp, ring.halfW, ring.halfH,
+                                                ring.phase, ring.roughness);
+            const float depth01 = qBound(0.f, ring.relZ / (RING_SPACING * NUM_RINGS), 1.f);
+            const int alpha = static_cast<int>((1.f - depth01) * 46.f + turnCue * 22.f);
+            painter->setPen(QPen(QColor(55, 150, 165, alpha), 1.0f));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawPath(polygonPath(pts));
+        }
+
+        constexpr int RIDGE_COUNT = 6;
+        constexpr int SAMPLE_COUNT = 18;
+        for (int ridge = 0; ridge < RIDGE_COUNT; ++ridge) {
+            const int idx = (ridge * SAMPLE_COUNT) / RIDGE_COUNT;
+            QPainterPath ridgePath;
+            bool started = false;
+
+            for (int r = rings.size() - 1; r >= 1; --r) {
+                const RingDesc &ring = rings[r];
+                const QList<QPointF> pts = caveRing(vp, ring.halfW, ring.halfH,
+                                                    ring.phase, ring.roughness);
+                if (pts.isEmpty()) continue;
+
+                const QPointF p = pts[idx % pts.size()];
+                if (!started) {
+                    ridgePath.moveTo(p);
+                    started = true;
+                } else {
+                    ridgePath.lineTo(p);
+                }
+            }
+
+            const float angle = static_cast<float>(ridge) / static_cast<float>(RIDGE_COUNT)
+                * 2.f * static_cast<float>(M_PI);
+            const float wallFacing = std::max(0.f, static_cast<float>(
+                std::cos(angle) * (vpOffX / 240.f) + std::sin(angle) * (vpOffY / 170.f)));
+            const int alpha = static_cast<int>(22.f + turnCue * 18.f + wallFacing * 38.f);
+            const QColor ridgeColor = wallFacing > 0.08f
+                ? QColor(210, 125, 35, alpha)
+                : QColor(45, 130, 150, alpha);
+
+            painter->setPen(QPen(ridgeColor, wallFacing > 0.08f ? 1.5f : 1.0f));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawPath(ridgePath);
+        }
+
+        painter->restore();
+    }
+
+    // -----------------------------------------------------------------------
+    // 4. Far end cap — fills the farthest ring so stars never bleed through.
+    //    Kept opaque enough to prevent open-space bleed but slightly translucent
+    //    so it doesn't read as a hard wall.
     // -----------------------------------------------------------------------
     const RingDesc &farEnd = rings.last();
-    const QList<QPointF> endPts = caveRing(vp, farEnd.halfW, farEnd.halfH,
-                                            farEnd.phase, farEnd.roughness);
+    const float horizonScale = enclosed ? 0.52f : 1.f;
+    const QList<QPointF> endPts = caveRing(vp,
+                                            farEnd.halfW * horizonScale,
+                                            farEnd.halfH * horizonScale,
+                                            farEnd.phase,
+                                            farEnd.roughness + 0.04f);
     painter->setPen(Qt::NoPen);
-    painter->setBrush(QColor(2, 3, 7, 228));
+    painter->setBrush(enclosed ? QColor(1, 2, 5, 218) : QColor(2, 3, 7, 200));
     painter->drawPath(polygonPath(endPts));
+
+    // Faint cave-ambient glow at the tunnel vanishing point — suggests depth
+    // and "more cave ahead" without looking like an exit to open space.
+    if (enclosed) {
+        QRadialGradient ambient(vp, 42.f);
+        ambient.setColorAt(0.0, QColor(18, 55, 80, 30));
+        ambient.setColorAt(1.0, QColor(0, 0, 0, 0));
+        painter->setBrush(ambient);
+        painter->drawEllipse(vp, 42.f, 28.f);
+    }
 
     // -----------------------------------------------------------------------
     // 5. Depth fog — seals the far end of the tunnel.
@@ -263,11 +467,13 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
     //    Open mouth (intro/attract): faint — lets stars show through.
     // -----------------------------------------------------------------------
     if (enclosed) {
+        // Lighter haze — just enough to give atmospheric depth without
+        // burying the far-ring structure the player needs to read turns.
         QRadialGradient fog(vp, 340.f);
-        fog.setColorAt(0.00, QColor(1, 2, 4, 128));
-        fog.setColorAt(0.28, QColor(1, 2, 5, 102));
-        fog.setColorAt(0.58, QColor(2, 3, 7,  58));
-        fog.setColorAt(0.84, QColor(2, 4, 8,  24));
+        fog.setColorAt(0.00, QColor(1, 2, 4,  45));
+        fog.setColorAt(0.28, QColor(1, 2, 5,  36));
+        fog.setColorAt(0.58, QColor(2, 3, 7,  20));
+        fog.setColorAt(0.84, QColor(2, 4, 8,   8));
         fog.setColorAt(1.00, QColor(0, 0, 0,   0));
         painter->setPen(Qt::NoPen);
         painter->setBrush(fog);
@@ -294,14 +500,44 @@ void CaveRenderer::drawCave(QPainter *painter, const Frame &frame) const
             turnDir = QPointF(std::sin(frame.time * 0.4f), std::cos(frame.time * 0.33f));
 
         const float occ = frame.turnOcclusion;
-        const QPointF capCenter = vp + turnDir * (38.f + occ * 74.f);
-        QRadialGradient cap(capCenter, 78.f + occ * 125.f);
-        cap.setColorAt(0.0, QColor(3, 5, 9, static_cast<int>(190 + occ * 55.f)));
-        cap.setColorAt(0.55, QColor(8, 12, 18, static_cast<int>(130 + occ * 75.f)));
-        cap.setColorAt(1.0, QColor(0, 0, 0, 0));
-        painter->setPen(Qt::NoPen);
-        painter->setBrush(cap);
-        painter->drawEllipse(capCenter, 92.f + occ * 190.f, 58.f + occ * 128.f);
+        if (enclosed) {
+            // On a bend the visible "horizon" should vanish behind the cave
+            // wall. Draw an offset, elongated lobe instead of a centered hole.
+            const QPointF capCenter = vp + turnDir * (72.f + occ * 128.f);
+            const float angleDeg = std::atan2(turnDir.y(), turnDir.x()) * 180.f / static_cast<float>(M_PI);
+            const float longR = 88.f + occ * 230.f;
+            const float shortR = 34.f + occ * 78.f;
+
+            painter->save();
+            painter->translate(capCenter);
+            painter->rotate(angleDeg);
+            QRadialGradient cap(QPointF(0.f, 0.f), longR);
+            cap.setColorAt(0.0, QColor(2, 4, 8, static_cast<int>(176 + occ * 46.f)));
+            cap.setColorAt(0.48, QColor(5, 8, 13, static_cast<int>(112 + occ * 60.f)));
+            cap.setColorAt(1.0, QColor(0, 0, 0, 0));
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(cap);
+            painter->drawEllipse(QPointF(0.f, 0.f), longR, shortR);
+            painter->restore();
+
+            const QPointF shoulder = vp + turnDir * (28.f + occ * 48.f);
+            QRadialGradient shoulderShade(shoulder, 110.f + occ * 145.f);
+            shoulderShade.setColorAt(0.0, QColor(1, 2, 5, static_cast<int>(58 + occ * 70.f)));
+            shoulderShade.setColorAt(0.72, QColor(3, 5, 9, static_cast<int>(30 + occ * 46.f)));
+            shoulderShade.setColorAt(1.0, QColor(0, 0, 0, 0));
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(shoulderShade);
+            painter->drawEllipse(shoulder, 104.f + occ * 120.f, 70.f + occ * 86.f);
+        } else {
+            const QPointF capCenter = vp + turnDir * (38.f + occ * 74.f);
+            QRadialGradient cap(capCenter, 78.f + occ * 125.f);
+            cap.setColorAt(0.0, QColor(3, 5, 9, static_cast<int>(145 + occ * 40.f)));
+            cap.setColorAt(0.55, QColor(8, 12, 18, static_cast<int>(90 + occ * 55.f)));
+            cap.setColorAt(1.0, QColor(0, 0, 0, 0));
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(cap);
+            painter->drawEllipse(capCenter, 92.f + occ * 190.f, 58.f + occ * 128.f);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -344,8 +580,10 @@ void CaveRenderer::drawFloorGlow(QPainter *painter, const Frame &frame) const
     const float speedBoost = std::min(std::max(0.f, (frame.worldSpeed - 135.f) / 365.f), 1.f);
     // yBoost: near-floor brightens the glow; near-ceiling dims it
     const float yBoost = frame.playerOffYNorm;   // -1 ceiling … +1 floor
+    const float tunnelV = qBound(-1.f, static_cast<float>(vp.y() - 360.f) / 145.f, 1.f);
 
-    const float baseAlpha  = 55.f + speedBoost * 95.f + yBoost * 55.f;
+    const float baseAlpha  = 55.f + speedBoost * 95.f + yBoost * 55.f
+                           + qMax(0.f, -tunnelV) * 34.f;
     const float glowRadius = 250.f + speedBoost * 60.f + std::max(0.f, yBoost) * 40.f;
 
     QRadialGradient floorGlow(vp.x(), vp.y() + 245.f, glowRadius);
@@ -357,15 +595,36 @@ void CaveRenderer::drawFloorGlow(QPainter *painter, const Frame &frame) const
     painter->setBrush(floorGlow);
     painter->drawEllipse(QPointF(vp.x(), vp.y() + 245.f), glowRadius, 95.f + speedBoost * 25.f + std::max(0.f, yBoost) * 20.f);
 
+    // Uphill: the floor should feel like it rises toward the player.
+    const float uphillAmt = qMax(0.f, -tunnelV);
+    if (uphillAmt > 0.001f) {
+        QLinearGradient floorRise(0.f, vp.y() + 110.f, 0.f, 720.f);
+        floorRise.setColorAt(0.0, QColor(0, 0, 0, 0));
+        floorRise.setColorAt(0.38, QColor(18, 54, 66, static_cast<int>(uphillAmt * 52.f)));
+        floorRise.setColorAt(0.78, QColor(8, 20, 28, static_cast<int>(uphillAmt * 108.f)));
+        floorRise.setColorAt(1.0, QColor(2, 5, 10, static_cast<int>(uphillAmt * 156.f)));
+        painter->setBrush(floorRise);
+        painter->drawRect(QRectF(0.f, vp.y() + 92.f, 1280.f, 720.f - (vp.y() + 92.f)));
+    }
+
     // Ceiling proximity vignette — dark gradient creeping down from the top
     // when Cuarzito is near the ceiling (playerOffYNorm strongly negative).
     const float ceilAmt = std::max(0.f, -frame.playerOffYNorm - 0.20f) / 0.80f;
+    const float downhillAmt = qMax(0.f, tunnelV);
     if (ceilAmt > 0.001f) {
         QLinearGradient ceilGrad(0.f, 0.f, 0.f, 260.f);
         ceilGrad.setColorAt(0.0, QColor(8, 18, 32, static_cast<int>(ceilAmt * 160.f)));
         ceilGrad.setColorAt(1.0, QColor(0, 0, 0, 0));
         painter->setBrush(ceilGrad);
         painter->drawRect(QRectF(0.f, 0.f, 1280.f, 260.f));
+    }
+    if (downhillAmt > 0.001f) {
+        QLinearGradient ceilingDrop(0.f, 0.f, 0.f, 300.f + downhillAmt * 120.f);
+        ceilingDrop.setColorAt(0.0, QColor(10, 24, 38, static_cast<int>(downhillAmt * 168.f)));
+        ceilingDrop.setColorAt(0.38, QColor(8, 18, 28, static_cast<int>(downhillAmt * 110.f)));
+        ceilingDrop.setColorAt(1.0, QColor(0, 0, 0, 0));
+        painter->setBrush(ceilingDrop);
+        painter->drawRect(QRectF(0.f, 0.f, 1280.f, 320.f + downhillAmt * 120.f));
     }
 
     QLinearGradient floorPlane(0.f, vp.y() + 180.f, 0.f, 720.f);

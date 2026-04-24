@@ -23,23 +23,43 @@ The repository currently contains a playable Qt prototype with an OpenGL-ready w
 - Procedural placeholder Cuarzito drawn with `QPainter`.
 - Dedicated `CaveRenderer` with a QPainter-based streaming faceted tunnel.
 - Track data loaded from `resources/tracks/first_tunnel.json` through Qt resources.
-- Fullscreen uses cover scaling so ultrawide screens are filled instead of letterboxed.
+- Fullscreen uses fit scaling so the full authored 1280x720 frame stays visible on ultrawide screens.
 - Cuarzito is currently drawn without a persistent aura to preserve tunnel visibility.
 
 The prototype proves the core loop works. The current cave renderer is intentionally isolated so it can later be upgraded internally to GLSL without changing gameplay code.
 
 ## Current Resume Note
 
-Stopped after a working iteration on track loading, curve inertia, fullscreen ultrawide scaling, Cuarzito visibility, and near-camera tunnel coverage.
+Stopped during the vertical-motion debugging pass.
 
-The tunnel now streams past the camera and fills ultrawide fullscreen better than before, but the next phase is still visual/game-feel tuning. Current issues to resume from:
+What is in place now:
 
-- Improve what is visible at the far end of the tunnel.
-- Make turns much more visible on walls, ceiling, and floor.
-- Make curve inertia stronger and more readable.
-- Restore/fix the mini-map, which is currently not visible after the ultrawide/fullscreen changes.
-- Add stronger acceleration/braking feedback.
-- Build a track editor for the JSON tunnel format.
+- CLI test mode:
+  - `cuarzito-race.exe --test downhill`
+  - `cuarzito-race.exe --test uphill`
+  - `cuarzito-race.exe --test vertical`
+- dedicated test tracks under `resources/tracks/tests/`
+- test runs start directly in `Playing`, force invulnerability, and exit when the test track ends
+- test runs write trace output to `stderr`
+- invulnerability can also be toggled manually with `I`
+- fullscreen now preserves the whole authored frame on ultrawide
+- a projected safe-zone rectangle is always drawn during gameplay for debugging
+
+Current blocking issue:
+
+- uphill/downhill compensation is still wrong
+- desired rule:
+  - uphill/downhill move the corridor
+  - pressing `Up` / `Down` compensates that motion
+  - with the correct input, Cuarzito should look similar to how he would in a straight segment
+- actual result:
+  - the safe-zone box, Cuarzito's visible position, and collision state do not yet fully agree
+  - on uphill, pressing `Up` still does not reliably cancel the uphill effect
+
+Temporary debug simplification already applied:
+
+- curve inertia is currently set to `0.0` on purpose
+- do not restore inertia until the vertical compensation contract works cleanly
 
 ## Visual References
 
@@ -284,16 +304,16 @@ src/
 
 - [ ] Improve what can be seen at the end of the tunnel so the player can read the route without losing the enclosed cave feeling.
 - [ ] Make left/right/up/down turns visible directly on the walls, ceiling, and floor; current turns are not pronounced enough.
-- [ ] Increase curve inertia/kinetic energy so high-speed turns push Cuarzito much harder toward the outside wall.
+- [ ] Restore and retune curve inertia after the vertical compensation contract is fixed. It is intentionally set to zero right now for debugging.
 - [ ] Add stronger acceleration and braking feel: speed lines, tunnel pulse, FOV/projection response, engine/air sound, or equivalent feedback.
-- [ ] Restore/fix the mini-map; it has disappeared or become hidden after recent fullscreen/render changes.
+- [ ] Simplify/tune the 3D cube mini-map so left/right/up/down track motion is readable without clutter.
 - [ ] Build a GUI tunnel editor for `resources/tracks/first_tunnel.json`.
 - [ ] Rebalance speeds so Cuarzito cannot trivially overtake gems; he may need to brake or manage distance to let gems pass/settle ahead.
 - [ ] On game end, make Cuarzito exit the cave into the stars/space instead of only stopping in the tunnel/game-over overlay.
 - [ ] Add obstacles inside the tunnel.
 - [ ] Improve the tunnel appearance: richer facets, better material contrast, more readable depth, and stronger cave identity.
 - [ ] Make crashes much more obvious with stronger visual, motion, and audio feedback.
-- [ ] Make vertical motion obvious when Cuarzito goes up or down.
+- [ ] Fix the vertical compensation contract: uphill/downhill move the safe corridor, `Up`/`Down` compensate that motion, and the safe-zone overlay must match actual collision behavior.
 - [ ] Add proper sound and music beyond the current generated cue tones/ambient loop.
 
 ## Controls

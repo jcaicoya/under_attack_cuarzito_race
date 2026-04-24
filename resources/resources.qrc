@@ -1,5 +1,8 @@
 <RCC>
     <qresource prefix="/">
         <file>tracks/first_tunnel.json</file>
+        <file>tracks/tests/downhill.json</file>
+        <file>tracks/tests/uphill.json</file>
+        <file>tracks/tests/vertical.json</file>
     </qresource>
 </RCC>

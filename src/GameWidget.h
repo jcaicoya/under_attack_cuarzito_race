@@ -7,11 +7,12 @@
 #include "CaveRenderer.h"
 
 class GameScene;
+struct GameLaunchOptions;
 
 class GameWidget : public QOpenGLWidget, protected QOpenGLFunctions {
     Q_OBJECT
 public:
-    explicit GameWidget(QWidget *parent = nullptr);
+    explicit GameWidget(const GameLaunchOptions &options, QWidget *parent = nullptr);
     ~GameWidget() override;
 
 protected:

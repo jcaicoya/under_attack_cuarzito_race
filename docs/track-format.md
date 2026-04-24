@@ -93,10 +93,10 @@ The negative sign is intentional: a left curve pushes Cuarzito toward the right 
 
 ## First Tunnel Pattern
 
-The first track alternates:
+The first track now starts with:
 
 ```text
-straight, left, straight, right, straight, left, straight, right...
+straight, left, straight, right, straight, uphill, straight, downhill...
 ```
 
 Straight segments are `600` world units. Turn segments are `400` world units. Every turn is `45` degrees.

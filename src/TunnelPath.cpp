@@ -13,7 +13,6 @@
 Q_LOGGING_CATEGORY(trackLog, "cuarzito.track")
 
 namespace {
-constexpr char kTrackResource[] = ":/tracks/first_tunnel.json";
 constexpr float kDefaultSegmentLength = 200.f;
 constexpr float kDefaultTurnAngleDegrees = 30.f;
 
@@ -28,9 +27,9 @@ float curvatureFor(float angleDegrees, float length)
 // ---------------------------------------------------------------------------
 // Constructor — load the resource track, then precompute segment boundaries
 // ---------------------------------------------------------------------------
-TunnelPath::TunnelPath()
+TunnelPath::TunnelPath(const QString &resourcePath)
 {
-    QVector<Segment> segments = loadTrack(QString::fromLatin1(kTrackResource));
+    QVector<Segment> segments = loadTrack(resourcePath);
     if (segments.isEmpty()) {
         qCWarning(trackLog) << "Using fallback tunnel track";
         segments = fallbackTrack();
@@ -89,9 +88,11 @@ QVector<TunnelPath::Segment> TunnelPath::loadTrack(const QString &resourcePath) 
         } else if (type == QStringLiteral("right")) {
             segment.curvH = curvatureFor(angle, length);
         } else if (type == QStringLiteral("uphill")) {
-            segment.curvV = curvatureFor(angle, length);
-        } else if (type == QStringLiteral("downhill")) {
+            // World/path Y is "down" relative to the camera framing used by
+            // gameplay and the mini-map, so uphill must bend toward negative Y.
             segment.curvV = -curvatureFor(angle, length);
+        } else if (type == QStringLiteral("downhill")) {
+            segment.curvV = curvatureFor(angle, length);
         } else {
             qCWarning(trackLog) << "Skipping segment with unknown type" << i << type;
             continue;

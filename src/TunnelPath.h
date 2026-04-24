@@ -16,7 +16,7 @@ public:
         float curvatureV = 0.f;   // vertical curvature at this z
     };
 
-    TunnelPath();   // loads the resource track and precomputes keyframes
+    explicit TunnelPath(const QString &resourcePath = QStringLiteral(":/tracks/first_tunnel.json"));
 
     Sample  sample(float z) const;
     QPointF gemOffset(int gemIndex, float z) const;

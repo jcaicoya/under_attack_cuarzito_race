@@ -6,6 +6,7 @@
 #include <QString>
 #include "AudioManager.h"
 #include "CaveRenderer.h"
+#include "GameLaunchOptions.h"
 #include "HighScoreManager.h"
 #include "InputManager.h"
 #include "TunnelPath.h"
@@ -17,7 +18,7 @@ enum class GameState { Attract, Intro, Countdown, Playing, GameOver, HighScoreEn
 class GameScene : public QObject {
     Q_OBJECT
 public:
-    explicit GameScene(QObject *parent = nullptr);
+    explicit GameScene(const GameLaunchOptions &options = {}, QObject *parent = nullptr);
     InputManager *inputManager() { return &m_input; }
     void update(float dt);
     void render(QPainter *painter);
@@ -37,6 +38,8 @@ public:
     enum class ViewMode { ThirdPerson, FirstPerson };
     ViewMode viewMode() const { return m_viewMode; }
     void toggleViewMode();
+    void toggleInvulnerability();
+    bool isInvulnerable() const { return m_invulnerable; }
 
 private:
     // ---------------------------------------------------------------
@@ -52,7 +55,7 @@ private:
     // the visible tunnel ring boundary at that depth — wall contact looks real.
     static constexpr float PLAYER_DRAW_DEPTH = 200.f;
     static constexpr float PLAYER_SPEED  = 320.f;
-    static constexpr float CHASE_MIN_SPEED = 135.f;
+    static constexpr float CHASE_MIN_SPEED = 100.f;
     static constexpr float CHASE_BASE_SPEED = 235.f;
     static constexpr float CHASE_MAX_SPEED = 440.f;
     static constexpr float CHASE_ACCEL = 260.f;
@@ -63,10 +66,10 @@ private:
     // Entity structs
     // ---------------------------------------------------------------
     struct Player {
-        float offX = 0.f;   // screen-space offset from VP (tunnel center)
-        float offY = 0.f;
+        float offX = 0.f;   // local tunnel offset from the safe center
+        float offY = 0.f;   // negative = up on screen, positive = down
         float z = 0.f;
-        float speed = CHASE_BASE_SPEED;
+        float speed = CHASE_MIN_SPEED;
         bool wallContact = false;
     };
 
@@ -105,7 +108,12 @@ private:
     // Player absolute screen position (derived from VP + offset)
     float playerSX() const { return m_vpX + m_player.offX; }
     float playerSY() const { return m_vpY + m_player.offY; }
+    QPointF playerDrawCenter() const;
     float playerLean() const;
+    float testVerticalIntent() const;
+    QString currentTestSegmentLabel() const;
+    void logTestTrace(bool force = false);
+    void logTestCompletion() const;
 
     // ---------------------------------------------------------------
     // Game flow
@@ -136,6 +144,7 @@ private:
     // Rendering passes
     // ---------------------------------------------------------------
     void drawChaseGems(QPainter *p) const;
+    void drawSafeZone(QPainter *p) const;
     void drawPlayer(QPainter *p) const;
     void drawVisorReveal(QPainter *p, float cx, float cy, float width, float height, float amount) const;
     void drawBursts(QPainter *p) const;
@@ -150,6 +159,7 @@ private:
     // State
     // ---------------------------------------------------------------
     GameState    m_state = GameState::Attract;
+    GameLaunchOptions m_launchOptions;
     InputManager m_input;
     AudioManager m_audio;
     HighScoreManager m_highScores;
@@ -165,7 +175,7 @@ private:
     float m_vpY  = CY;
     float m_time = 0.f;
 
-    float m_worldSpeed      = CHASE_BASE_SPEED;
+    float m_worldSpeed      = CHASE_MIN_SPEED;
     float m_tunnelZ         = 0.f;
     float m_introAnimT      = 0.f;
     float m_survivalTime    = 0.f;
@@ -174,7 +184,7 @@ private:
     float m_gameOverIdleTimer = 0.f;
     float m_introTimer      = 0.f;
     float m_countdownTimer  = 0.f;
-    float m_chaseTimer      = 20.f;
+    float m_energy         = 100.f;
     float m_cleanFlightTime = 0.f;
     float m_revealTimer     = 0.f;
     float m_revealDuration  = 0.f;
@@ -193,4 +203,8 @@ private:
     float   m_diagTimer = 0.f;
     float    m_cameraShake = 0.f;
     ViewMode m_viewMode    = ViewMode::ThirdPerson;
+    bool     m_invulnerable = false;
+    float    m_testTraceTimer = 0.f;
+    QString  m_lastTestSegmentLabel;
+    bool     m_lastTestWallContact = false;
 };

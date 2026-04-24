@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "test_downhill",
+  "segments": [
+    { "type": "straight", "length": 500 },
+    { "type": "downhill", "length": 700, "angleDegrees": 55 },
+    { "type": "straight", "length": 500 }
+  ]
+}

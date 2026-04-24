@@ -1,8 +1,10 @@
 #pragma once
 #include <QMainWindow>
 
+struct GameLaunchOptions;
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    explicit MainWindow(QWidget *parent = nullptr);
+    explicit MainWindow(const GameLaunchOptions &options, QWidget *parent = nullptr);
 };

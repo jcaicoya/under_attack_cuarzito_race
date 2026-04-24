@@ -7,18 +7,39 @@
 #include <QRandomGenerator>
 #include <QRadialGradient>
 #include <QLinearGradient>
+#include <QCoreApplication>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+
+namespace {
+constexpr float kSafeXFactor = 1.28f;
+constexpr float kSafeYFactor = 1.18f;
+constexpr float kCameraLookAhead = 360.f;
+constexpr float kCameraVerticalLookAhead = 220.f;
+constexpr float kCameraVerticalGain = 0.48f;
+constexpr float kCameraVpYBias = -12.f;
+constexpr float kCameraVpYClamp = 82.f;
+constexpr float kPhysicsLookAhead = 180.f;
+constexpr float kPhysicsLeadScaleX = 160.f;
+constexpr float kPhysicsLeadScaleY = 150.f;
+constexpr float kPhysicsDriftGain = 1.45f;
+}
 
 // ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
 
-GameScene::GameScene(QObject *parent) : QObject(parent)
+GameScene::GameScene(const GameLaunchOptions &options, QObject *parent)
+    : QObject(parent)
+    , m_launchOptions(options)
+    , m_tunnelPath(options.trackResource)
 {
     m_audio.startAmbient();
-
-    startAttract();
+    if (m_launchOptions.testMode)
+        startGame();
+    else
+        startAttract();
 }
 
 // ---------------------------------------------------------------------------
@@ -30,6 +51,8 @@ void GameScene::render(QPainter *painter)
     painter->setRenderHint(QPainter::Antialiasing);
 
     drawChaseGems(painter);
+    if (m_state == GameState::Playing)
+        drawSafeZone(painter);
 
     if (m_state != GameState::Attract && m_viewMode == ViewMode::ThirdPerson)
         drawPlayer(painter);
@@ -49,6 +72,13 @@ void GameScene::toggleViewMode()
         : ViewMode::ThirdPerson;
 }
 
+void GameScene::toggleInvulnerability()
+{
+    m_invulnerable = !m_invulnerable;
+    showDiagnostics(QString("Invulnerability: %1")
+        .arg(m_invulnerable ? "ON" : "OFF"));
+}
+
 QPointF GameScene::cameraShakeOffset() const
 {
     if (m_cameraShake <= 0.001f)
@@ -65,6 +95,121 @@ float GameScene::playerLean() const
     return m_input.isMovingLeft() ? -1.f : 1.f;
 }
 
+QPointF GameScene::playerDrawCenter() const
+{
+    const float scale = FOCAL / PLAYER_DRAW_DEPTH;
+    const float cx = m_vpX + m_player.offX * scale;
+    const float anchorY = m_vpY + 30.f;
+    const float rawCy = anchorY + m_player.offY * scale;
+
+    const TunnelPath::Sample drawSample = m_tunnelPath.sample(m_player.z);
+    const float projectedSafeY = qMax(drawSample.innerRadius * kSafeYFactor * scale, 24.f);
+    float topLimit = qMax(72.f, anchorY - projectedSafeY + 12.f);
+    float bottomLimit = qMin(SCENE_H - 72.f, anchorY + projectedSafeY - 12.f);
+
+    if (topLimit > bottomLimit) {
+        const float center = qBound(72.f, anchorY, SCENE_H - 72.f);
+        topLimit = center;
+        bottomLimit = center;
+    }
+
+    const float cy = qBound(topLimit, rawCy, bottomLimit);
+    return QPointF(cx, cy);
+}
+
+float GameScene::testVerticalIntent() const
+{
+    if (!m_launchOptions.testMode)
+        return 0.f;
+
+    if (m_launchOptions.testName == QStringLiteral("downhill"))
+        return 1.f;
+    if (m_launchOptions.testName == QStringLiteral("uphill"))
+        return -1.f;
+    if (m_launchOptions.testName == QStringLiteral("vertical")) {
+        const float phase = std::fmod(m_time, 4.f);
+        if (phase < 1.f) return 0.f;
+        if (phase < 2.f) return 1.f;
+        if (phase < 3.f) return 0.f;
+        return -1.f;
+    }
+
+    return 0.f;
+}
+
+QString GameScene::currentTestSegmentLabel() const
+{
+    const TunnelPath::Sample sample = m_tunnelPath.sample(m_player.z);
+    const float h = sample.curvatureH;
+    const float v = sample.curvatureV;
+    constexpr float eps = 1e-4f;
+
+    if (std::abs(h) <= eps && std::abs(v) <= eps)
+        return QStringLiteral("straight");
+    if (std::abs(v) > std::abs(h))
+        return v < 0.f ? QStringLiteral("uphill") : QStringLiteral("downhill");
+    return h > 0.f ? QStringLiteral("right") : QStringLiteral("left");
+}
+
+void GameScene::logTestTrace(bool force)
+{
+    if (!m_launchOptions.traceMode)
+        return;
+
+    const QString segmentLabel = currentTestSegmentLabel();
+    const bool segmentChanged = segmentLabel != m_lastTestSegmentLabel;
+    const bool wallChanged = m_player.wallContact != m_lastTestWallContact;
+    const bool timerElapsed = m_testTraceTimer >= 1.f;
+
+    if (!force && !segmentChanged && !wallChanged && !timerElapsed)
+        return;
+
+    const QPointF drawCenter = playerDrawCenter();
+    const TunnelPath::Sample sample = m_tunnelPath.sample(m_player.z);
+    const float safeY = sample.innerRadius * kSafeYFactor;
+    const float safeX = sample.innerRadius * kSafeXFactor;
+    const float nx = safeX > 0.f ? m_player.offX / safeX : 0.f;
+    const float ny = safeY > 0.f ? m_player.offY / safeY : 0.f;
+
+    const QString line = QStringLiteral("[test:%1] t=%2 z=%3/%4 seg=%5 vpY=%6 offY=%7 drawY=%8 normY=%9 speed=%10 wall=%11 hits=%12")
+                             .arg(m_launchOptions.testName)
+                             .arg(m_time, 0, 'f', 2)
+                             .arg(m_player.z, 0, 'f', 1)
+                             .arg(m_tunnelPath.totalLength(), 0, 'f', 1)
+                             .arg(segmentLabel)
+                             .arg(m_vpY, 0, 'f', 1)
+                             .arg(m_player.offY, 0, 'f', 1)
+                             .arg(drawCenter.y(), 0, 'f', 1)
+                             .arg(ny, 0, 'f', 2)
+                             .arg(m_player.speed, 0, 'f', 1)
+                             .arg(m_player.wallContact ? QStringLiteral("yes") : QStringLiteral("no"))
+                             .arg(m_wallHitCount);
+    std::fprintf(stderr, "%s\n", line.toLocal8Bit().constData());
+    std::fflush(stderr);
+
+    m_testTraceTimer = 0.f;
+    m_lastTestSegmentLabel = segmentLabel;
+    m_lastTestWallContact = m_player.wallContact;
+}
+
+void GameScene::logTestCompletion() const
+{
+    if (!m_launchOptions.traceMode)
+        return;
+
+    const QString line = QStringLiteral("[test:%1] completed t=%2 z=%3/%4 score=%5 hits=%6 speed=%7 invulnerable=%8")
+                             .arg(m_launchOptions.testName)
+                             .arg(m_time, 0, 'f', 2)
+                             .arg(m_player.z, 0, 'f', 1)
+                             .arg(m_tunnelPath.totalLength(), 0, 'f', 1)
+                             .arg(m_score, 0, 'f', 1)
+                             .arg(m_wallHitCount)
+                             .arg(m_player.speed, 0, 'f', 1)
+                             .arg(m_invulnerable ? QStringLiteral("yes") : QStringLiteral("no"));
+    std::fprintf(stderr, "%s\n", line.toLocal8Bit().constData());
+    std::fflush(stderr);
+}
+
 float GameScene::turnOcclusion() const
 {
     return m_tunnelPath.sample(m_player.z + 180.f).occlusion;
@@ -72,13 +217,13 @@ float GameScene::turnOcclusion() const
 
 float GameScene::playerOffYNorm() const
 {
-    const float safeY = m_tunnelPath.sample(m_player.z).innerRadius * 0.88f;
+    const float safeY = m_tunnelPath.sample(m_player.z).innerRadius * kSafeYFactor;
     return safeY > 0.f ? qBound(-1.f, m_player.offY / safeY, 1.f) : 0.f;
 }
 
 float GameScene::playerOffXNorm() const
 {
-    const float safeX = m_tunnelPath.sample(m_player.z).innerRadius * 1.28f;
+    const float safeX = m_tunnelPath.sample(m_player.z).innerRadius * kSafeXFactor;
     return safeX > 0.f ? qBound(-1.f, m_player.offX / safeX, 1.f) : 0.f;
 }
 
@@ -198,13 +343,11 @@ void GameScene::drawPlayer(QPainter *painter) const
     // as the tunnel rings. This places him geometrically inside the tunnel so
     // wall contact is visually convincing — near the ceiling he appears near
     // the top of the screen, near the floor he appears near the bottom.
-    const float scale = FOCAL / PLAYER_DRAW_DEPTH;
-    const float cx    = m_vpX + m_player.offX * scale;
+    const QPointF drawCenter = playerDrawCenter();
+    const float cx    = drawCenter.x();
     const float bobY  = std::sin(m_time * 6.8f) * 3.8f;
     const float bobX  = std::sin(m_time * 4.1f + 1.2f) * 1.4f;
-    // Small downward bias (30px) so neutral position sits just below the VP
-    // rather than exactly at it, giving a mild over-the-shoulder feel.
-    const float cy    = m_vpY + 30.f + m_player.offY * scale + bobY;
+    const float cy    = drawCenter.y() + bobY;
     const float lean  = playerLean();
     const float reveal = m_revealDuration > 0.f
         ? qBound(0.f, m_revealTimer / m_revealDuration, 1.f)
@@ -296,6 +439,43 @@ void GameScene::drawPlayer(QPainter *painter) const
         painter->setBrush(QColor(110, 255, 140, 235));
         painter->drawRoundedRect(QRectF(barX, visorY - 2.2f, 13.f, 4.0f), 2.f, 2.f);
     }
+}
+
+void GameScene::drawSafeZone(QPainter *painter) const
+{
+    const TunnelPath::Sample sample = m_tunnelPath.sample(m_player.z);
+    const float scale = FOCAL / PLAYER_DRAW_DEPTH;
+    const float safeX = sample.innerRadius * kSafeXFactor * scale;
+    const float safeY = sample.innerRadius * kSafeYFactor * scale;
+    const float anchorY = m_vpY + 30.f;
+    const QRectF zoneRect(m_vpX - safeX,
+                          anchorY - safeY,
+                          safeX * 2.f,
+                          safeY * 2.f);
+
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+
+    const bool contact = m_player.wallContact;
+    const QColor outline = contact
+        ? QColor(255, 170, 90, 210)
+        : QColor(90, 235, 215, 155);
+    const QColor fill = contact
+        ? QColor(255, 120, 45, 26)
+        : QColor(40, 180, 165, 18);
+
+    painter->setPen(QPen(outline, 1.6f, Qt::DashLine));
+    painter->setBrush(fill);
+    painter->drawRoundedRect(zoneRect, 6.f, 6.f);
+
+    // Midlines make the visible center and vertical/horizontal travel easier to read.
+    painter->setPen(QPen(QColor(outline.red(), outline.green(), outline.blue(), 90), 1.0f, Qt::DotLine));
+    painter->drawLine(QPointF(zoneRect.center().x(), zoneRect.top()),
+                      QPointF(zoneRect.center().x(), zoneRect.bottom()));
+    painter->drawLine(QPointF(zoneRect.left(), zoneRect.center().y()),
+                      QPointF(zoneRect.right(), zoneRect.center().y()));
+
+    painter->restore();
 }
 
 void GameScene::drawVisorReveal(QPainter *painter, float cx, float cy, float width, float height, float amount) const
@@ -390,13 +570,13 @@ void GameScene::drawImpactFlash(QPainter *painter) const
 
     // Centre the shockwave on the projected character position so it aligns with
     // the visual. In first-person there is no character — use the VP instead.
-    const float drawScale = FOCAL / PLAYER_DRAW_DEPTH;
+    const QPointF drawCenter = playerDrawCenter();
     const float fsx = (m_viewMode == ViewMode::FirstPerson)
         ? m_vpX
-        : m_vpX + m_player.offX * drawScale;
+        : drawCenter.x();
     const float fsy = (m_viewMode == ViewMode::FirstPerson)
         ? m_vpY
-        : m_vpY + 30.f + m_player.offY * drawScale;
+        : drawCenter.y();
 
     // Large shockwave expanding from impact point
     const float shockR = 220.f + (1.f - t) * 160.f;
@@ -427,6 +607,8 @@ void GameScene::update(float dt)
         m_cameraShake = qMax(0.f, m_cameraShake - dt * 5.5f);
     if (m_diagTimer > 0.f)
         m_diagTimer = qMax(0.f, m_diagTimer - dt);
+    if (m_launchOptions.traceMode)
+        m_testTraceTimer += dt;
 
     for (auto &burst : m_bursts) {
         burst.sx += burst.vx * dt;
@@ -516,6 +698,14 @@ void GameScene::updateCountdown(float dt)
 void GameScene::updatePlaying(float dt)
 {
     updateChasePhysics(dt);
+    if (m_launchOptions.traceMode)
+        logTestTrace();
+
+    if (m_launchOptions.testMode && m_player.z >= m_tunnelPath.totalLength()) {
+        logTestCompletion();
+        QCoreApplication::quit();
+        return;
+    }
 
     for (auto &gem : m_chaseGems) {
         if (!gem.collected)
@@ -534,15 +724,14 @@ void GameScene::updatePlaying(float dt)
         const float catchRadius = 82.f;
         if (ahead <= 34.f && ahead > -90.f && dx * dx + dy * dy <= catchRadius * catchRadius) {
             gem.collected = true;
-            m_chaseTimer += 20.f;
-            m_score += gem.value + qMax(0.f, m_chaseTimer) * 18.f + m_cleanFlightTime * 8.f;
+            m_score += gem.value + qMax(0.f, m_energy) * 6.f + m_cleanFlightTime * 8.f;
             m_audio.play(SoundCue::CollectSpecial);
             m_revealDuration = 0.52f;
             m_revealTimer = m_revealDuration;
             {
-                const float ds = FOCAL / PLAYER_DRAW_DEPTH;
-                const float bsx = m_vpX + m_player.offX * ds;
-                const float bsy = m_vpY + 30.f + m_player.offY * ds;
+                const QPointF drawCenter = playerDrawCenter();
+                const float bsx = drawCenter.x();
+                const float bsy = drawCenter.y();
                 spawnBurst(bsx, bsy - 22.f, true);
                 m_popups.append({bsx, bsy - 42.f, gem.value, 1.0f});
             }
@@ -553,14 +742,20 @@ void GameScene::updatePlaying(float dt)
     const bool allGemsCollected = std::all_of(m_chaseGems.cbegin(), m_chaseGems.cend(),
                                              [](const ChaseGem &gem) { return gem.collected; });
     if (allGemsCollected) {
-        m_score += qMax(0.f, m_chaseTimer) * 75.f + m_cleanFlightTime * 45.f;
+        m_score += qMax(0.f, m_energy) * 30.f + m_cleanFlightTime * 45.f;
         m_runWon = true;
         endGame();
         return;
     }
 
-    m_chaseTimer -= dt;
-    if (m_chaseTimer <= 0.f) {
+    if (m_player.z >= m_tunnelPath.totalLength()) {
+        m_score += qMax(0.f, m_energy) * 20.f + static_cast<float>(allGemsCollected ? 500 : 0);
+        m_runWon = true;
+        endGame();
+        return;
+    }
+
+    if (m_energy <= 0.f) {
         endGame();
         return;
     }
@@ -587,58 +782,69 @@ void GameScene::updateChasePhysics(float dt)
 {
     m_time += dt;
 
-    // --- Input: steer and throttle ---
-    const float steerSpeed = PLAYER_SPEED * (0.72f + m_player.speed / CHASE_MAX_SPEED * 0.42f);
-    m_player.offX -= m_input.isMovingLeft()  ? steerSpeed * dt : 0.f;
-    m_player.offX += m_input.isMovingRight() ? steerSpeed * dt : 0.f;
-    m_player.offY -= m_input.isMovingUp()    ? steerSpeed * dt : 0.f;
-    m_player.offY += m_input.isMovingDown()  ? steerSpeed * dt : 0.f;
+    const TunnelPath::Sample physSample = m_tunnelPath.sample(m_player.z);
+    const float safeX = physSample.innerRadius * kSafeXFactor;
+    const float safeY = physSample.innerRadius * kSafeYFactor;
 
-    if (m_input.isAccelerating())
+    // --- Input: move Cuarzito inside the tunnel cross-section ---
+    const float steerSpeed = PLAYER_SPEED * (0.72f + m_player.speed / CHASE_MAX_SPEED * 0.42f);
+    const float scriptedVerticalIntent = testVerticalIntent();
+    const float inputX =
+        (m_input.isMovingRight() ? 1.f : 0.f) -
+        (m_input.isMovingLeft() ? 1.f : 0.f);
+    const bool moveUp = scriptedVerticalIntent < -0.5f || m_input.isMovingUp();
+    const bool moveDown = scriptedVerticalIntent > 0.5f || m_input.isMovingDown();
+    const float inputY = (moveUp ? -1.f : 0.f) + (moveDown ? 1.f : 0.f);
+    m_player.offX += inputX * steerSpeed * dt;
+    m_player.offY += inputY * steerSpeed * dt;
+
+    const bool accelerating = m_launchOptions.testMode || m_input.isAccelerating();
+    const bool braking = !m_launchOptions.testMode && m_input.isBraking();
+    if (accelerating)
         m_player.speed += CHASE_ACCEL * dt;
-    if (m_input.isBraking())
+    if (braking)
         m_player.speed -= CHASE_BRAKE * dt;
-    if (!m_input.isAccelerating())
+    if (!accelerating)
         m_player.speed -= CHASE_DRAG * dt;
 
     m_player.speed = qBound(CHASE_MIN_SPEED, m_player.speed, CHASE_MAX_SPEED);
 
-    // --- Curve inertia BEFORE wall clamp so the clamp can catch it ---
-    // The tunnel turns under Cuarzito. If the player does not steer into the
-    // curve, inertia carries him toward the outside wall.
+    // --- Tunnel-induced drift ---
+    // The camera follows the tunnel axis. Cuarzito stays in local tunnel space
+    // and must be steered back toward the safe center.
     //
-    // Sign convention:
-    //   left curve  (curvH < 0) -> offX grows  -> right/outside wall
-    //   right curve (curvH > 0) -> offX shrinks -> left/outside wall
-    //
-    // Tuning target: with no steering, the first 45-degree left turn should
-    // push Cuarzito into the right wall near the end of the curve.
-    constexpr float CURVE_INERTIA_K = 2.20f;
-    const TunnelPath::Sample physSample = m_tunnelPath.sample(m_player.z);
-    m_player.offX -= physSample.curvatureH * m_player.speed * m_player.speed * CURVE_INERTIA_K * dt;
-    m_player.offY -= physSample.curvatureV * m_player.speed * m_player.speed * CURVE_INERTIA_K * dt;
+    // Route-induced drift: use the same tunnel look-ahead idea as the camera
+    // instead of raw curvature alone, so the visible route, safe corridor, and
+    // kinetic push all react to the same path signal.
+    const QPointF routeLead = m_tunnelPath.sample(m_player.z + kPhysicsLookAhead).center
+                            - physSample.center;
+    const float leadX = qBound(-1.f, routeLead.x() / kPhysicsLeadScaleX, 1.f);
+    const float leadY = qBound(-1.f, -routeLead.y() / kPhysicsLeadScaleY, 1.f);
+    const float driftScale = (m_player.speed / CHASE_MAX_SPEED) * kPhysicsDriftGain;
+    m_player.offX -= leadX * safeX * driftScale * dt;
+    m_player.offY += leadY * safeY * driftScale * dt;
 
     // --- Wall collision and clamp ---
-    const float safeX = physSample.innerRadius * 1.28f;
-    const float safeY = physSample.innerRadius * 0.88f;
     const float nx = safeX > 0.f ? m_player.offX / safeX : 0.f;
     const float ny = safeY > 0.f ? m_player.offY / safeY : 0.f;
-    const float wallDistance = std::sqrt(nx * nx + ny * ny);
-    m_player.wallContact = wallDistance > 1.f;
+    m_player.wallContact = std::abs(nx) > 1.f || std::abs(ny) > 1.f;
 
     if (m_player.wallContact) {
         if (!m_wasWallContact) {
             ++m_wallHitCount;
-            m_score = qMax(0.f, m_score - 45.f);
             const float hitT = m_player.speed / CHASE_MAX_SPEED;
             m_impactFlash  = qMax(m_impactFlash,  0.30f + hitT * 0.55f);
             m_cameraShake  = qMax(m_cameraShake,  0.22f + hitT * 0.38f);
             spawnWallSparks();
+            if (!m_invulnerable) {
+                m_score = qMax(0.f, m_score - 45.f);
+                m_energy = qMax(0.f, m_energy - 25.f);
+            }
         }
-        const float clampScale = 1.f / wallDistance;
-        m_player.offX *= clampScale;
-        m_player.offY *= clampScale;
-        m_player.speed -= 260.f * dt;
+        m_player.offX = qBound(-safeX, m_player.offX, safeX);
+        m_player.offY = qBound(-safeY, m_player.offY, safeY);
+        if (!m_invulnerable)
+            m_player.speed -= 260.f * dt;
     }
     m_wasWallContact = m_player.wallContact;
 
@@ -653,20 +859,26 @@ void GameScene::updateChasePhysics(float dt)
     // tunnel has drifted in world space across many segments.
     // Look further ahead so upcoming turns displace the VP earlier, making
     // curves visually obvious on the walls before Cuarzito enters them.
-    const QPointF currentCenter   = m_tunnelPath.sample(m_player.z).center;
-    const QPointF lookAheadCenter = m_tunnelPath.sample(m_player.z + 360.f).center;
+    const QPointF currentCenter = physSample.center;
+    const QPointF lookAheadCenter = m_tunnelPath.sample(m_player.z + kCameraLookAhead).center;
+    const QPointF lookAheadCenterV = m_tunnelPath.sample(m_player.z + kCameraVerticalLookAhead).center;
     const QPointF relDir = lookAheadCenter - currentCenter;
+    const QPointF relDirV = lookAheadCenterV - currentCenter;
     float targetVpX = CX + relDir.x() * 1.05f;
-    float targetVpY = CY + relDir.y() * 0.88f;
+    // Vertical framing is intentionally more conservative than horizontal.
+    // Large uphill/downhill displacements can destroy tunnel perspective if
+    // the VP is allowed to climb or drop as aggressively as the raw path delta.
+    // Path Y uses negative values for uphill, so add the look-ahead delta here:
+    // uphill  -> VP rises
+    // downhill -> VP falls
+    float targetVpY = CY + kCameraVpYBias + relDirV.y() * kCameraVerticalGain;
+    targetVpY = qBound(CY - kCameraVpYClamp, targetVpY, CY + kCameraVpYClamp);
     if (m_viewMode == ViewMode::FirstPerson) {
-        // First-person: full camera lean — walls shift as if seen through Cuarzito's eyes.
-        targetVpX += m_player.offX * 0.42f;
-        targetVpY += m_player.offY * 0.42f;
-    } else {
-        // Third-person: subtle VP tilt based on player Y so the camera tilts
-        // slightly toward whatever surface Cuarzito is approaching.
-        targetVpX += m_player.offX * 0.10f;
-        targetVpY += m_player.offY * 0.15f;
+        // First-person can lean a little with Cuarzito, but the tunnel still
+        // owns the main framing so controls remain consistent with third-person.
+        targetVpX += m_player.offX * 0.14f;
+        targetVpY += m_player.offY * 0.06f;
+        targetVpY = qBound(CY - kCameraVpYClamp, targetVpY, CY + kCameraVpYClamp);
     }
     m_vpX += (targetVpX - m_vpX) * qMin(1.f, dt * 4.4f);
     m_vpY += (targetVpY - m_vpY) * qMin(1.f, dt * 4.4f);
@@ -747,14 +959,15 @@ void GameScene::startGame()
     m_time    = 0.f;
     m_tunnelZ = 0.f;
 
-    m_worldSpeed      = CHASE_BASE_SPEED;
+    m_player.speed     = CHASE_MIN_SPEED;
+    m_worldSpeed       = CHASE_MIN_SPEED;
     m_survivalTime    = 0.f;
     m_score           = 0.f;
     m_gameOverTimer   = 0.f;
     m_gameOverIdleTimer = 0.f;
     m_introTimer      = 0.f;
     m_countdownTimer  = 0.f;
-    m_chaseTimer      = 20.f;
+    m_energy         = 100.f;
     m_cleanFlightTime = 0.f;
     m_revealTimer     = 0.f;
     m_revealDuration  = 0.f;
@@ -770,6 +983,21 @@ void GameScene::startGame()
 
     m_hudText.clear();
     m_overlayText.clear();
+    m_invulnerable = true;
+    if (m_launchOptions.testMode) {
+        m_overlayText = QString("TEST MODE: %1").arg(m_launchOptions.testName);
+        m_testTraceTimer = 1.f;
+        m_lastTestSegmentLabel.clear();
+        m_lastTestWallContact = false;
+        if (m_launchOptions.traceMode) {
+            const QString line = QStringLiteral("[test:%1] start track=%2 length=%3 invulnerable=yes")
+                                     .arg(m_launchOptions.testName)
+                                     .arg(m_launchOptions.trackResource)
+                                     .arg(m_tunnelPath.totalLength(), 0, 'f', 1);
+            std::fprintf(stderr, "%s\n", line.toLocal8Bit().constData());
+            std::fflush(stderr);
+        }
+    }
 }
 
 void GameScene::startAttract()
@@ -790,7 +1018,7 @@ void GameScene::startAttract()
     m_gameOverIdleTimer = 0.f;
     m_introTimer      = 0.f;
     m_countdownTimer  = 0.f;
-    m_chaseTimer      = 20.f;
+    m_energy         = 100.f;
     m_cleanFlightTime = 0.f;
     m_revealTimer     = 0.f;
     m_revealDuration  = 0.f;
@@ -827,7 +1055,7 @@ void GameScene::startIntro()
     m_gameOverIdleTimer = 0.f;
     m_introTimer      = 4.2f;
     m_countdownTimer  = 0.f;
-    m_chaseTimer      = 20.f;
+    m_energy         = 100.f;
     m_cleanFlightTime = 0.f;
     m_introAnimT      = 0.f;
     m_impactFlash     = 0.f;
@@ -868,7 +1096,7 @@ void GameScene::startCountdown()
     m_gameOverIdleTimer = 0.f;
     m_introTimer      = 0.f;
     m_countdownTimer  = 3.0f;
-    m_chaseTimer      = 20.f;
+    m_energy         = 100.f;
     m_cleanFlightTime = 0.f;
     m_revealTimer     = 0.f;
     m_revealDuration  = 0.f;
@@ -965,8 +1193,8 @@ void GameScene::spawnWallSparks()
 {
     // Spawn rock-chip sparks from the screen edge on the contact side,
     // flying inward — makes it feel like Cuarzito scraped the cave wall.
-    const float safeX = m_tunnelPath.sample(m_player.z).innerRadius * 1.28f;
-    const float safeY = m_tunnelPath.sample(m_player.z).innerRadius * 0.88f;
+    const float safeX = m_tunnelPath.sample(m_player.z).innerRadius * kSafeXFactor;
+    const float safeY = m_tunnelPath.sample(m_player.z).innerRadius * kSafeYFactor;
     const float nx    = safeX > 0.f ? m_player.offX / safeX : 0.f;
     const float ny    = safeY > 0.f ? m_player.offY / safeY : 0.f;
 
@@ -1043,9 +1271,9 @@ void GameScene::updateHUD()
     }
 
     m_hudText =
-        QString("SCORE  %1    TIMER  %2s    GEM  %3/4    NEXT  %4    SPEED  %5%6")
+        QString("SCORE  %1    ENERGY %2    GEM  %3/4    NEXT  %4    SPEED  %5%6")
             .arg(static_cast<int>(m_score), 5)
-            .arg(static_cast<int>(qMax(0.f, m_chaseTimer)))
+            .arg(static_cast<int>(qMax(0.f, m_energy)), 3)
             .arg(collected)
             .arg(static_cast<int>(nextDistance), 4)
             .arg(static_cast<int>(m_player.speed), 3)
@@ -1146,71 +1374,110 @@ void GameScene::drawTopScores(QPainter *painter, float x, float y, int maxRows) 
 
 void GameScene::drawMiniMap(QPainter *painter) const
 {
-    // Map panel geometry — generous margins so it stays in the safe zone even
-    // on ultrawide displays where cover-scaling crops the bottom/right edges.
-    constexpr float MW   = 170.f;
-    constexpr float MH   = 130.f;
-    constexpr float MX   = SCENE_W - MW - 82.f;
-    constexpr float MY   = SCENE_H - MH - 92.f;
+    constexpr float MW = 206.f;
+    constexpr float MH = 154.f;
+    constexpr float MX = SCENE_W - MW - 38.f;
+    constexpr float MY = SCENE_H - MH - 34.f;
 
-    // World-space window: show from behind to well ahead of player
-    constexpr float Z_BEHIND = 300.f;
-    constexpr float Z_AHEAD  = 2200.f;
+    constexpr float Z_BEHIND = 260.f;
+    constexpr float Z_AHEAD  = 2000.f;
+    constexpr int   SAMPLES  = 72;
+    constexpr float STEP     = (Z_BEHIND + Z_AHEAD) / SAMPLES;
+
     const float zMin = m_player.z - Z_BEHIND;
     const float zMax = m_player.z + Z_AHEAD;
-    const float zRange = zMax - zMin;
 
-    // Horizontal extents: sample the path to find bounds
-    constexpr int   SAMPLES  = 80;
-    constexpr float STEP     = (Z_BEHIND + Z_AHEAD) / SAMPLES;
-    float xMin = -1.f, xMax = 1.f;
+    float xMin = 0.f, xMax = 0.f;
+    float yMin = 0.f, yMax = 0.f;
+    bool firstSample = true;
     for (int i = 0; i <= SAMPLES; ++i) {
-        const float cx = m_tunnelPath.sample(zMin + i * STEP).center.x();
-        if (cx < xMin) xMin = cx;
-        if (cx > xMax) xMax = cx;
+        const QPointF c = m_tunnelPath.sample(zMin + i * STEP).center;
+        if (firstSample) {
+            xMin = xMax = c.x();
+            yMin = yMax = c.y();
+            firstSample = false;
+        } else {
+            xMin = qMin(xMin, c.x());
+            xMax = qMax(xMax, c.x());
+            yMin = qMin(yMin, c.y());
+            yMax = qMax(yMax, c.y());
+        }
     }
-    const float xRange = qMax(xMax - xMin, 60.f);
-    const float xPad   = xRange * 0.25f;
-    xMin -= xPad;  const float xTotal = xRange + xPad * 2.f;
 
-    // World → map pixel
-    auto mapX = [&](float wx) {
-        return MX + (wx - xMin) / xTotal * MW;
-    };
-    auto mapY = [&](float wz) {
-        // z increases downward on screen so "ahead" is at top of panel
-        return MY + MH - (wz - zMin) / zRange * MH;
+    const float xPad = qMax(40.f, (xMax - xMin) * 0.22f);
+    const float yPad = qMax(32.f, (yMax - yMin) * 0.30f);
+    xMin -= xPad; xMax += xPad;
+    yMin -= yPad; yMax += yPad;
+
+    const float xRange = qMax(1.f, xMax - xMin);
+    const float yRange = qMax(1.f, yMax - yMin);
+    const float zRange = qMax(1.f, zMax - zMin);
+
+    const float isoX = 0.46f;
+    const float isoY = 0.22f;
+    const float isoZ = 0.78f;
+
+    auto project3D = [&](float wx, float wy, float wz) {
+        const float nx = ((wx - xMin) / xRange - 0.5f) * 2.f;
+        const float ny = ((wy - yMin) / yRange - 0.5f) * 2.f;
+        const float nz = ((wz - zMin) / zRange - 0.5f) * 2.f;
+        const float px = MX + MW * 0.5f + (nx - nz * isoX) * (MW * 0.34f);
+        const float py = MY + MH * 0.72f + ny * isoZ * (MH * 0.34f)
+                       - nz * isoY * (MH * 0.34f);
+        return QPointF(px, py);
     };
 
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
 
-    // Background panel with visible teal border so it doesn't blend into cave
+    // Background panel.
     painter->setPen(QPen(QColor(40, 140, 160, 200), 1.5f));
     painter->setBrush(QColor(4, 10, 18, 210));
     painter->drawRoundedRect(QRectF(MX - 4, MY - 4, MW + 8, MH + 8), 6.f, 6.f);
 
-    // Clip to panel
     painter->setClipRect(QRectF(MX, MY, MW, MH));
 
-    // Tunnel path line
+    const QPointF backTopLeft     = project3D(xMin, yMax, zMin);
+    const QPointF backTopRight    = project3D(xMax, yMax, zMin);
+    const QPointF backBottomRight = project3D(xMax, yMin, zMin);
+    const QPointF backBottomLeft  = project3D(xMin, yMin, zMin);
+    const QPointF frontTopLeft     = project3D(xMin, yMax, zMax);
+    const QPointF frontTopRight    = project3D(xMax, yMax, zMax);
+    const QPointF frontBottomRight = project3D(xMax, yMin, zMax);
+    const QPointF frontBottomLeft  = project3D(xMin, yMin, zMax);
+
+    painter->setPen(QPen(QColor(55, 95, 110, 120), 1.f));
+    painter->setBrush(Qt::NoBrush);
+    painter->drawPolygon(QPolygonF() << backTopLeft << backTopRight << backBottomRight << backBottomLeft);
+    painter->drawPolygon(QPolygonF() << frontTopLeft << frontTopRight << frontBottomRight << frontBottomLeft);
+    painter->drawLine(backTopLeft, frontTopLeft);
+    painter->drawLine(backTopRight, frontTopRight);
+    painter->drawLine(backBottomRight, frontBottomRight);
+    painter->drawLine(backBottomLeft, frontBottomLeft);
+
     QPainterPath path;
     bool first = true;
     for (int i = 0; i <= SAMPLES; ++i) {
         const float wz = zMin + i * STEP;
         const QPointF c = m_tunnelPath.sample(wz).center;
-        const QPointF pt(mapX(c.x()), mapY(wz));
-        if (first) { path.moveTo(pt); first = false; }
-        else        path.lineTo(pt);
+        const QPointF pt = project3D(c.x(), c.y(), wz);
+        if (first) {
+            path.moveTo(pt);
+            first = false;
+        } else {
+            path.lineTo(pt);
+        }
     }
-    painter->setPen(QPen(QColor(60, 90, 110, 200), 2.f));
+
+    painter->setPen(QPen(QColor(90, 220, 220, 215), 2.f));
     painter->setBrush(Qt::NoBrush);
     painter->drawPath(path);
 
     // Player position
     const QPointF playerCenter = m_tunnelPath.sample(m_player.z).center;
-    const QPointF playerDot(mapX(playerCenter.x() + m_player.offX * 0.15f),
-                             mapY(m_player.z));
+    const QPointF playerDot = project3D(playerCenter.x() + m_player.offX,
+                                        playerCenter.y() + m_player.offY,
+                                        m_player.z);
     painter->setPen(Qt::NoPen);
     QRadialGradient playerGlow(playerDot, 10.f);
     playerGlow.setColorAt(0.0, QColor(100, 255, 180, 210));
@@ -1227,7 +1494,10 @@ void GameScene::drawMiniMap(QPainter *painter) const
         if (gem.z < zMin || gem.z > zMax) continue;
 
         const QPointF gemCenter = m_tunnelPath.sample(gem.z).center;
-        const QPointF gemDot(mapX(gemCenter.x()), mapY(gem.z));
+        const QPointF gemOffset = m_tunnelPath.gemOffset(i, gem.z);
+        const QPointF gemDot = project3D(gemCenter.x() + gemOffset.x(),
+                                         gemCenter.y() + gemOffset.y(),
+                                         gem.z);
 
         QRadialGradient gemGlow(gemDot, 6.f);
         gemGlow.setColorAt(0.0, QColor(gem.core.red(), gem.core.green(), gem.core.blue(), 200));
@@ -1238,16 +1508,12 @@ void GameScene::drawMiniMap(QPainter *painter) const
         painter->drawEllipse(gemDot, 3.f, 3.f);
     }
 
-    // "Ahead" direction indicator — thin line at player z
-    painter->setPen(QPen(QColor(80, 130, 160, 120), 1.f, Qt::DotLine));
-    painter->drawLine(QPointF(MX, mapY(m_player.z)), QPointF(MX + MW, mapY(m_player.z)));
-
     painter->setClipping(false);
 
     // Label
     painter->setPen(QColor(80, 200, 200, 220));
     painter->setFont(QFont("Courier New", 9, QFont::Bold));
-    painter->drawText(QPointF(MX, MY - 5.f), "MAP");
+    painter->drawText(QPointF(MX, MY - 5.f), "MAP 3D");
 
     painter->restore();
 }
