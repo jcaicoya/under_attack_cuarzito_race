@@ -3,7 +3,7 @@
 #include <QSet>
 #include <Qt>
 
-#include "InputManager.h"
+#include "InputAction.h"
 
 namespace KeyboardActionMap {
 

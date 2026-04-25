@@ -211,6 +211,7 @@ src/
 ├── CaveRenderer.h / .cpp     # cave/space/tunnel renderer
 ├── GameScene.h / .cpp        # game state, entities, update, draw passes
 ├── TunnelPath.h / .cpp       # world-z tunnel center, radius, and curve samples
+├── InputAction.h             # shared abstract input action enum
 ├── InputManager.h / .cpp     # action aggregation and input state
 ├── KeyboardActionMap.h / .cpp # keyboard key-to-action mapping
 ├── SdlControllerBackend.h / .cpp # optional SDL3 runtime backend for DualSense/gamepads
@@ -307,6 +308,7 @@ src/
 - [x] Move SDL3 runtime loading and polling into `SdlControllerBackend`.
 - [x] Move XInput runtime loading and polling into `XInputControllerBackend`.
 - [x] Move keyboard key-to-action mapping into `KeyboardActionMap`.
+- [x] Move the shared `Action` enum into `InputAction.h`.
 - Tune dead zone and sensitivity.
 
 ### 7. Polish for Live Use

@@ -76,6 +76,7 @@ Important files:
 | `src/GameScene.*` | Game state, entities, projection, updates, drawing. |
 | `src/TunnelPath.*` | Provides deterministic tunnel center/radius samples by world `z` for the chase redesign. |
 | `src/AudioManager.*` | Generates cue tones and a subtle ambient loop, then plays them through `QSoundEffect`. |
+| `src/InputAction.h` | Shared abstract input action enum used by input backends and game code. |
 | `src/InputManager.*` | Aggregates keyboard and gamepad input state into abstract actions. |
 | `src/KeyboardActionMap.*` | Stateless keyboard key-to-action mapping used by `InputManager`. |
 | `src/SdlControllerBackend.*` | Windows-only optional SDL3 runtime backend for DualSense/gamepads; dynamically loads `SDL3.dll`, polls SDL gamepads, and reports diagnostics. |
@@ -413,6 +414,7 @@ enum class GameState {
 - [x] Move SDL3 runtime loading and polling into `SdlControllerBackend`.
 - [x] Move XInput runtime loading and polling into `XInputControllerBackend`.
 - [x] Move keyboard key-to-action mapping into `KeyboardActionMap`.
+- [x] Move the shared `Action` enum into `InputAction.h`.
 - Tune dead zone and sensitivity.
 
 ### Phase G - Polish

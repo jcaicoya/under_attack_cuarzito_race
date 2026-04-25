@@ -13,7 +13,7 @@
 #include <QString>
 #include <QStringList>
 
-#include "InputManager.h"
+#include "InputAction.h"
 
 // Loads SDL3.dll at runtime and polls a connected gamepad.
 // Singleton — use SdlControllerBackend::instance().

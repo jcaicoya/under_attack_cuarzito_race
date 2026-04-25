@@ -13,7 +13,7 @@
 #include <QSet>
 #include <QString>
 
-#include "InputManager.h"
+#include "InputAction.h"
 
 // Loads XInput at runtime and polls the first connected XInput controller.
 // Windows-only; the entire class is absent on other platforms.
