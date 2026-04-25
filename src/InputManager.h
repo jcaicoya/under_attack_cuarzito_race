@@ -57,7 +57,7 @@ private:
 
     QSet<Qt::Key> m_held;
     QSet<Action> m_heldActions;
-    QSet<Action> m_gamepadHeldActions;
+    QSet<Action> m_xInputHeldActions;
     QSet<Action> m_sdlHeldActions;
     QSet<Action> m_pressedActions;
 };

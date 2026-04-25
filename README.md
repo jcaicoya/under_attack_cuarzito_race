@@ -25,7 +25,7 @@ The repository currently contains a playable Qt prototype with an OpenGL-ready w
 - Track data loaded from `resources/tracks/demo_tunnel.json` and `resources/tracks/live_tunnel.json` through Qt resources.
 - Attract-mode track selection with Left/Right and confirm.
 - Per-track gem `startZ` and `speed` configuration loaded from each track JSON.
-- Keyboard, XInput, and optional SDL3 controller input through `InputManager`; SDL3 runtime loading/polling lives in `SdlControllerBackend`.
+- Keyboard, XInput, and optional SDL3 controller input through `InputManager`; backend-specific runtime loading/polling lives in `XInputControllerBackend` and `SdlControllerBackend`.
 - Energy-based failure in place of the old countdown-loss model.
 - Route-driven vertical horizon hiding for uphill/downhill in enclosed tunnel gameplay.
 - Fullscreen uses fit scaling so the full authored 1280x720 frame stays visible on ultrawide screens.
@@ -197,6 +197,7 @@ preshow-game/
     ├── GameWidget.h / .cpp
     ├── GameScene.h / .cpp
     ├── SdlControllerBackend.h / .cpp
+    ├── XInputControllerBackend.h / .cpp
     └── InputManager.h / .cpp
 ```
 
@@ -210,8 +211,9 @@ src/
 ├── CaveRenderer.h / .cpp     # cave/space/tunnel renderer
 ├── GameScene.h / .cpp        # game state, entities, update, draw passes
 ├── TunnelPath.h / .cpp       # world-z tunnel center, radius, and curve samples
-├── InputManager.h / .cpp     # action abstraction, keyboard, and XInput polling
+├── InputManager.h / .cpp     # action abstraction and keyboard state
 ├── SdlControllerBackend.h / .cpp # optional SDL3 runtime backend for DualSense/gamepads
+├── XInputControllerBackend.h / .cpp # Windows XInput runtime backend
 ├── HighScoreManager.h / .cpp
 └── shaders/
     ├── cave.vert
@@ -302,6 +304,7 @@ src/
 - [x] Add basic Windows XInput gamepad support.
 - [x] Add optional dynamic SDL3 controller backend for DualSense.
 - [x] Move SDL3 runtime loading and polling into `SdlControllerBackend`.
+- [x] Move XInput runtime loading and polling into `XInputControllerBackend`.
 - Tune dead zone and sensitivity.
 
 ### 7. Polish for Live Use
@@ -343,7 +346,7 @@ src/
 
 DualSense note: PlayStation controllers usually do not expose themselves as XInput devices. For the show controller, place `SDL3.dll` beside `cuarzito-race.exe` or make it available on `PATH`; the game will load it dynamically through `SdlControllerBackend` and use SDL's controller mapping when present.
 
-Keep keyboard as the reliable fallback for live-event use. SDL3 diagnostics are available through `InputManager::gamepadDiagnostics()` and include DLL load status plus detected controller names/IDs.
+Keep keyboard as the reliable fallback for live-event use. Gamepad diagnostics are available through `InputManager::gamepadDiagnostics()` and include SDL3/XInput DLL load status plus detected controller names/IDs where available.
 
 ## Build Notes
 

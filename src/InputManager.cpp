@@ -3,12 +3,8 @@
 #include <QDebug>
 
 #ifdef Q_OS_WIN
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <Xinput.h>
 #include "SdlControllerBackend.h"
+#include "XInputControllerBackend.h"
 #endif
 
 InputManager::InputManager(QObject *parent) : QObject(parent) {}
@@ -34,7 +30,7 @@ void InputManager::keyReleased(Qt::Key key)
 bool InputManager::isHeld(Action action) const
 {
     return m_heldActions.contains(action) ||
-           m_gamepadHeldActions.contains(action) ||
+           m_xInputHeldActions.contains(action) ||
            m_sdlHeldActions.contains(action);
 }
 
@@ -119,10 +115,12 @@ void InputManager::rebuildHeldActions()
 void InputManager::updateGamepad()
 {
     QSet<Action> newSdlHeld;
+    QSet<Action> newXInputHeld;
 #ifdef Q_OS_WIN
     static bool s_logged = false;
     auto &sdl2 = SdlControllerBackend::instance();
     newSdlHeld = sdl2.poll();
+    newXInputHeld = XInputControllerBackend::instance().poll();
 #endif
 
     for (Action action : newSdlHeld) {
@@ -131,61 +129,13 @@ void InputManager::updateGamepad()
     }
     m_sdlHeldActions = newSdlHeld;
 
-#ifdef Q_OS_WIN
-    using XInputGetStateFn = DWORD (WINAPI *)(DWORD, XINPUT_STATE *);
-
-    static HMODULE module = []() -> HMODULE {
-        const char *dlls[] = {"xinput1_4.dll", "xinput9_1_0.dll", "xinput1_3.dll"};
-        for (const char *dll : dlls) {
-            if (HMODULE handle = LoadLibraryA(dll))
-                return handle;
-        }
-        return nullptr;
-    }();
-
-    static XInputGetStateFn getState = module
-        ? reinterpret_cast<XInputGetStateFn>(GetProcAddress(module, "XInputGetState"))
-        : nullptr;
-
-    QSet<Action> newHeld;
-    if (getState) {
-        XINPUT_STATE state = {};
-        for (DWORD index = 0; index < XUSER_MAX_COUNT; ++index) {
-            if (getState(index, &state) != ERROR_SUCCESS)
-                continue;
-
-            const WORD buttons = state.Gamepad.wButtons;
-            const SHORT lx = state.Gamepad.sThumbLX;
-            const SHORT ly = state.Gamepad.sThumbLY;
-            constexpr SHORT deadZone = XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
-
-            if ((buttons & XINPUT_GAMEPAD_DPAD_LEFT) || lx < -deadZone)
-                newHeld.insert(Action::MoveLeft);
-            if ((buttons & XINPUT_GAMEPAD_DPAD_RIGHT) || lx > deadZone)
-                newHeld.insert(Action::MoveRight);
-            if ((buttons & XINPUT_GAMEPAD_DPAD_UP) || ly > deadZone)
-                newHeld.insert(Action::MoveUp);
-            if ((buttons & XINPUT_GAMEPAD_DPAD_DOWN) || ly < -deadZone)
-                newHeld.insert(Action::MoveDown);
-            if ((buttons & XINPUT_GAMEPAD_A) || (buttons & XINPUT_GAMEPAD_START))
-                newHeld.insert(Action::Confirm);
-            if ((buttons & XINPUT_GAMEPAD_A) || state.Gamepad.bRightTrigger > 30)
-                newHeld.insert(Action::Accelerate);
-            if ((buttons & XINPUT_GAMEPAD_B) || (buttons & XINPUT_GAMEPAD_BACK))
-                newHeld.insert(Action::Cancel);
-            if ((buttons & XINPUT_GAMEPAD_B) || state.Gamepad.bLeftTrigger > 30)
-                newHeld.insert(Action::Brake);
-
-            break;
-        }
-    }
-
-    for (Action action : newHeld) {
-        if (!m_gamepadHeldActions.contains(action))
+    for (Action action : newXInputHeld) {
+        if (!m_xInputHeldActions.contains(action))
             m_pressedActions.insert(action);
     }
-    m_gamepadHeldActions = newHeld;
+    m_xInputHeldActions = newXInputHeld;
 
+#ifdef Q_OS_WIN
     if (!s_logged) {
         s_logged = true;
         qDebug().noquote() << gamepadDiagnostics();
@@ -199,34 +149,8 @@ QString InputManager::gamepadDiagnostics() const
 #ifdef Q_OS_WIN
     // SDL3 section
     report += SdlControllerBackend::instance().diagnostics();
-
-    // XInput section
-    using XInputGetStateFn = DWORD (WINAPI *)(DWORD, XINPUT_STATE *);
-    static HMODULE xiModule = []() -> HMODULE {
-        const char *dlls[] = {"xinput1_4.dll", "xinput9_1_0.dll", "xinput1_3.dll"};
-        for (const char *dll : dlls)
-            if (HMODULE h = LoadLibraryA(dll)) return h;
-        return nullptr;
-    }();
-    static XInputGetStateFn xiGetState = xiModule
-        ? reinterpret_cast<XInputGetStateFn>(GetProcAddress(xiModule, "XInputGetState"))
-        : nullptr;
-
-    report += "\n=== XInput ===\n";
-    if (!xiModule) {
-        report += "XInput DLL: NOT FOUND\n";
-    } else {
-        int connected = 0;
-        if (xiGetState) {
-            for (DWORD i = 0; i < XUSER_MAX_COUNT; ++i) {
-                XINPUT_STATE state{};
-                if (xiGetState(i, &state) == ERROR_SUCCESS)
-                    ++connected;
-            }
-        }
-        report += QString("XInput controllers connected: %1\n").arg(connected);
-        report += "(DualSense is not XInput — 0 is expected for PS5 controllers)\n";
-    }
+    report += "\n";
+    report += XInputControllerBackend::instance().diagnostics();
 #else
     report = "Gamepad diagnostics: Windows only\n";
 #endif
