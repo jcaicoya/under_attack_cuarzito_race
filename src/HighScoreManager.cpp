@@ -39,19 +39,6 @@ void HighScoreManager::addScore(const QString &name, int score)
     save();
 }
 
-QString HighScoreManager::formattedTopScores(int maxRows) const
-{
-    QString text = "TOP SCORES";
-    const int rows = qMin(maxRows, m_entries.size());
-    for (int i = 0; i < rows; ++i) {
-        const Entry &entry = m_entries[i];
-        text += QString("\n%1. %2  %3")
-                    .arg(i + 1, 2)
-                    .arg(entry.name.leftJustified(3, ' '))
-                    .arg(entry.score, 5);
-    }
-    return text;
-}
 
 void HighScoreManager::load()
 {

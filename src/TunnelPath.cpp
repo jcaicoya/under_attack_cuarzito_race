@@ -224,14 +224,6 @@ QPointF TunnelPath::centerAt(float z) const
 }
 
 // ---------------------------------------------------------------------------
-// radiusAt — tunnel cross-section radius (constant for now, easily varied)
-// ---------------------------------------------------------------------------
-float TunnelPath::radiusAt(float /*z*/) const
-{
-    return 160.f;
-}
-
-// ---------------------------------------------------------------------------
 // sample — public API
 // ---------------------------------------------------------------------------
 TunnelPath::Sample TunnelPath::sample(float z) const
@@ -249,7 +241,7 @@ TunnelPath::Sample TunnelPath::sample(float z) const
     if (len > 1e-6f) tangent /= len;
     result.tangent = tangent;
 
-    result.radius      = radiusAt(z);
+    result.radius      = 160.f;
     result.innerRadius = result.radius * 0.74f;
 
     // Curvature from the containing segment

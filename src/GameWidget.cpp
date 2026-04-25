@@ -58,7 +58,6 @@ void GameWidget::paintGL()
         QSizeF(logicalW, logicalH),
         m_scene->vanishingPoint(),
         m_scene->time(),
-        m_scene->survivalTime(),
         m_scene->worldSpeed(),
         m_scene->turnOcclusion(),
         m_scene->verticalOcclusion(),

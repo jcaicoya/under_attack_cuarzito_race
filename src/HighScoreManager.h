@@ -15,7 +15,6 @@ public:
     const QList<Entry> &entries() const { return m_entries; }
     bool qualifies(int score) const;
     void addScore(const QString &name, int score);
-    QString formattedTopScores(int maxRows = 5) const;
 
 private:
     void load();

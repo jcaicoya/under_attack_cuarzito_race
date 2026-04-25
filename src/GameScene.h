@@ -13,7 +13,7 @@
 
 class QPainter;
 
-enum class GameState { Attract, Intro, Countdown, Playing, SuccessFlyout, FailureCrash, GameOver, HighScoreEntry };
+enum class GameState { Attract, Intro, Playing, SuccessFlyout, FailureCrash, GameOver, HighScoreEntry };
 enum class EndSequenceKind { None, TrackComplete, AllGemsCaptured, OutOfEnergy };
 
 class GameScene : public QObject {
@@ -25,7 +25,6 @@ public:
     void render(QPainter *painter);
     QPointF vanishingPoint() const { return QPointF(m_vpX, m_vpY); }
     float time() const { return m_time; }
-    float survivalTime() const { return m_survivalTime; }
     float worldSpeed() const { return m_worldSpeed; }
     float tunnelZ() const { return m_tunnelZ; }
     float turnOcclusion() const;
@@ -38,10 +37,8 @@ public:
     void restartRun();
 
     enum class ViewMode { ThirdPerson, FirstPerson };
-    ViewMode viewMode() const { return m_viewMode; }
     void toggleViewMode();
     void toggleInvulnerability();
-    bool isInvulnerable() const { return m_invulnerable; }
 
 private:
     // ---------------------------------------------------------------
@@ -131,7 +128,6 @@ private:
     void startGame();
     void startAttract();
     void startIntro();
-    void startCountdown();
     void startHighScoreEntry(int score);
     void startSuccessFlyout(EndSequenceKind kind, const QString &title, const QString &detail);
     void startFailureCrash(const QString &title, const QString &detail);
@@ -142,7 +138,6 @@ private:
 
     void updateAttract(float dt);
     void updateIntro(float dt);
-    void updateCountdown(float dt);
     void updatePlaying(float dt);
     void updateChasePhysics(float dt);
     void updateSuccessFlyout(float dt);

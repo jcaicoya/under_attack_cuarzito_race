@@ -325,10 +325,7 @@ void GameScene::drawChaseGems(QPainter *painter) const
         const QPointF offset = m_tunnelPath.gemOffset(ref.index, gem->z);
         QPointF relativeCenter = gemSample.center - playerSample.center;
 
-        if (m_state == GameState::Countdown) {
-            ahead = 280.f + ref.index * 78.f;
-            relativeCenter *= 0.35f;
-        } else if (m_state == GameState::Intro) {
+        if (m_state == GameState::Intro) {
             // Four gems float in a loose diamond, then dart into the tunnel.
             constexpr float DART_START_T = 0.58f;
             // Spread offsets: each gem has a distinct world-space position
@@ -722,7 +719,6 @@ void GameScene::update(float dt)
     switch (m_state) {
     case GameState::Attract:  updateAttract(dt);  break;
     case GameState::Intro:    updateIntro(dt);    break;
-    case GameState::Countdown:updateCountdown(dt);break;
     case GameState::Playing:  updatePlaying(dt);  break;
     case GameState::SuccessFlyout:updateSuccessFlyout(dt); break;
     case GameState::FailureCrash:updateFailureCrash(dt); break;
@@ -783,25 +779,6 @@ void GameScene::updateIntro(float dt)
         startGame();
 }
 
-void GameScene::updateCountdown(float dt)
-{
-    m_countdownTimer -= dt;
-    m_time += dt;
-    m_tunnelZ += 80.f * dt;
-
-    m_vpX = CX + std::sin(m_time * 0.18f) * 70.f;
-    m_vpY = CY + std::sin(m_time * 0.13f + 1.0f) * 50.f;
-
-    const int beat = static_cast<int>(std::ceil(m_countdownTimer));
-    if (beat > 0) {
-        setOverlay(QString::number(beat));
-    } else if (m_countdownTimer > -0.35f) {
-        setOverlay("GO");
-    } else {
-        startGame();
-    }
-}
-
 void GameScene::updatePlaying(float dt)
 {
     updateChasePhysics(dt);
@@ -858,7 +835,7 @@ void GameScene::updatePlaying(float dt)
     }
 
     if (m_player.z >= m_tunnelPath.totalLength()) {
-        m_score += qMax(0.f, m_energy) * 20.f + static_cast<float>(allGemsCollected ? 500 : 0);
+        m_score += qMax(0.f, m_energy) * 20.f;
         m_runWon = true;
         const int collected = static_cast<int>(std::count_if(m_chaseGems.cbegin(), m_chaseGems.cend(),
                                                              [](const ChaseGem &gem) { return gem.collected; }));
@@ -1280,47 +1257,6 @@ void GameScene::startIntro()
     m_endSequenceKind = EndSequenceKind::None;
     setOverlay("");
     m_audio.play(SoundCue::Start);
-}
-
-void GameScene::startCountdown()
-{
-    resetChaseGems();
-    m_popups.clear();
-    m_bursts.clear();
-    m_player = Player{};
-
-    m_vpX  = CX;
-    m_vpY  = CY;
-    m_time = 0.f;
-
-    m_worldSpeed      = CHASE_BASE_SPEED;
-    m_survivalTime    = 0.f;
-    m_score           = 0.f;
-    m_gameOverTimer   = 0.f;
-    m_gameOverIdleTimer = 0.f;
-    m_introTimer      = 0.f;
-    m_countdownTimer  = 3.0f;
-    m_energy         = 100.f;
-    m_cleanFlightTime = 0.f;
-    m_revealTimer     = 0.f;
-    m_revealDuration  = 0.f;
-    m_impactFlash     = 0.f;
-    m_endSequenceTimer = 0.f;
-    m_endOpenTimer    = 0.f;
-    m_cameraShake     = 0.f;
-    m_scoreSubmitted  = false;
-    m_runWon          = false;
-    m_wasWallContact  = false;
-    m_wallHitCount    = 0;
-    m_pendingScore    = 0;
-    m_initialIndex    = 0;
-    m_state           = GameState::Countdown;
-
-    m_hudText.clear();
-    m_endTitle.clear();
-    m_endDetail.clear();
-    m_endSequenceKind = EndSequenceKind::None;
-    setOverlay("3");
 }
 
 void GameScene::endGame()

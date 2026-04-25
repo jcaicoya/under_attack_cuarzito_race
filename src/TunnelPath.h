@@ -14,8 +14,8 @@ public:
     struct Sample {
         QPointF center;
         QPointF tangent;
-        float radius     = 160.f;
-        float innerRadius = 118.f;
+        float radius     = 0.f;
+        float innerRadius = 0.f;
         float occlusion  = 0.f;
         float curvatureH = 0.f;   // horizontal curvature at this z (radians/unit)
         float curvatureV = 0.f;   // vertical curvature at this z
@@ -58,7 +58,6 @@ private:
     void precompute(const QVector<Segment> &segments);
 
     QPointF centerAt(float z) const;
-    float   radiusAt(float z) const;
 
     QVector<Keyframe> m_keyframes;
     QVector<GemConfig> m_gemConfigs;
