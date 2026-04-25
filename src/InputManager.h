@@ -51,8 +51,6 @@ public:
     QString gamepadDiagnostics() const;
 
 private:
-    static QSet<Action> actionsForKey(Qt::Key key);
-    static bool hasActionForKey(Qt::Key key);
     void rebuildHeldActions();
 
     QSet<Qt::Key> m_held;

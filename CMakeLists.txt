@@ -27,6 +27,7 @@ add_executable(cuarzito-race
     src/AudioManager.cpp
     src/HighScoreManager.cpp
     src/InputManager.cpp
+    src/KeyboardActionMap.cpp
     src/SdlControllerBackend.cpp
     src/XInputControllerBackend.cpp
     resources/resources.qrc

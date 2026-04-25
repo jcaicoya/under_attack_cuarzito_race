@@ -211,7 +211,8 @@ src/
 ├── CaveRenderer.h / .cpp     # cave/space/tunnel renderer
 ├── GameScene.h / .cpp        # game state, entities, update, draw passes
 ├── TunnelPath.h / .cpp       # world-z tunnel center, radius, and curve samples
-├── InputManager.h / .cpp     # action abstraction and keyboard state
+├── InputManager.h / .cpp     # action aggregation and input state
+├── KeyboardActionMap.h / .cpp # keyboard key-to-action mapping
 ├── SdlControllerBackend.h / .cpp # optional SDL3 runtime backend for DualSense/gamepads
 ├── XInputControllerBackend.h / .cpp # Windows XInput runtime backend
 ├── HighScoreManager.h / .cpp
@@ -305,6 +306,7 @@ src/
 - [x] Add optional dynamic SDL3 controller backend for DualSense.
 - [x] Move SDL3 runtime loading and polling into `SdlControllerBackend`.
 - [x] Move XInput runtime loading and polling into `XInputControllerBackend`.
+- [x] Move keyboard key-to-action mapping into `KeyboardActionMap`.
 - Tune dead zone and sensitivity.
 
 ### 7. Polish for Live Use
