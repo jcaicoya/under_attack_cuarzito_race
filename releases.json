@@ -20,6 +20,13 @@
       "date": "2026-05-16T13:58:53",
       "message": "Publish releases directly to shared dist directories",
       "zip": "bajo-ataque-under_attack_cuarzito_race-v02.zip"
+    },
+    {
+      "version": 3,
+      "commit": "eb1a2ae",
+      "date": "2026-05-16T14:14:24",
+      "message": "Accept orchestrator launch flags in cuarzito race",
+      "zip": "bajo-ataque-under_attack_cuarzito_race-v03.zip"
     }
   ]
 }
