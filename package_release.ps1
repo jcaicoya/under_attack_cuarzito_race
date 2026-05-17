@@ -129,8 +129,8 @@ Copy-Item (Join-Path $out "Qt6MultimediaWidgets.dll")         $staging
 Copy-Item (Join-Path $out "SDL3.dll")                         $staging
 Copy-Item (Join-Path $out "plugins\platforms\qwindows.dll")   "$staging\plugins\platforms\"
 
-if (Test-Path (Join-Path $root "README.md")) {
-    Copy-Item (Join-Path $root "README.md") $staging
+if (Test-Path (Join-Path $root "RUNBOOK.md")) {
+    Copy-Item (Join-Path $root "RUNBOOK.md") $staging
 }
 
 $entryDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ss"
