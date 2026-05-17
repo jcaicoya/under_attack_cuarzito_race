@@ -34,6 +34,13 @@
       "date": "2026-05-16T17:37:07",
       "message": "Store Qt release archives at dist root",
       "zip": "cuarzito_race_v04.zip"
+    },
+    {
+      "version": 5,
+      "commit": "7f30f40",
+      "date": "2026-05-17T11:59:14",
+      "message": "Standardize project docs and package runbook",
+      "zip": "cuarzito_race_v05.zip"
     }
   ]
 }
